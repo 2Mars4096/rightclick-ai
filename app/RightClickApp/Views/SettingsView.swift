@@ -66,6 +66,27 @@ struct SettingsView: View {
                     Toggle("Notify on failure", isOn: $model.runtimeSettings.notifyOnFailure)
                 }
 
+                Section("Launch At Login") {
+                    Toggle(
+                        "Start RightClick AI automatically when I log in",
+                        isOn: Binding(
+                            get: { model.launchAtLoginEnabled },
+                            set: { model.setLaunchAtLoginEnabled($0) }
+                        )
+                    )
+
+                    HStack {
+                        Button("Refresh Launch Status") {
+                            model.refreshLaunchAtLoginStatus()
+                        }
+
+                        Spacer()
+                    }
+
+                    Text(model.launchAtLoginStatusMessage)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("OpenAI-Compatible") {
                     TextField("API URL", text: $model.runtimeSettings.openAIAPIURL)
                         .textFieldStyle(.roundedBorder)

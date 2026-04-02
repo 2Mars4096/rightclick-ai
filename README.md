@@ -25,6 +25,7 @@ What exists today:
 - native macOS app shell under `app/RightClickApp`
 - native provider settings UI with Keychain-backed API secrets
 - native app now behaves like a menu bar utility instead of forcing the review window on launch
+- native settings now let the user enable or disable launch at login
 - clipboard fallback in the native review window for apps where Services are weak
 - direct `Add to Calendar` service backed by the same shared runtime
 - FIFO queueing for repeated live calendar runs through `right-click-calendar`
@@ -70,7 +71,7 @@ That path is still useful for the calendar-only prototype and local shell smoke 
 
 Preferred path: open the installed app and use its Settings window. Provider API keys are stored in the macOS Keychain when saved from the native UI.
 
-After setup, close the windows and leave the app running. It stays in the menu bar and can be reopened there when needed.
+After setup, close the windows and leave the app running. It stays in the menu bar and can be reopened there when needed. Settings now also include a native launch-at-login toggle for keeping the app available after reboot and login.
 
 The shared runtime settings file still lives at:
 

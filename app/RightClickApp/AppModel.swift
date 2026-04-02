@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import ServiceManagement
 
 struct ActionDescriptor: Identifiable, Hashable {
     let id: String
@@ -56,6 +57,8 @@ final class AppModel: ObservableObject {
     @Published var launchSource = "Manual launch"
     @Published var runtimeSettings = RuntimeSettingsDocument()
     @Published var settingsStatusMessage = "Load or create a runtime settings file from the native Settings window."
+    @Published var launchAtLoginEnabled = false
+    @Published var launchAtLoginStatusMessage = "RightClick AI will not start automatically when you log in."
     @Published var runtimeRootPath: String {
         didSet {
             UserDefaults.standard.set(runtimeRootPath, forKey: Self.runtimeRootDefaultsKey)
@@ -70,6 +73,7 @@ final class AppModel: ObservableObject {
         availableActions = []
         reloadActions(initialLoad: true)
         reloadRuntimeSettings(initialLoad: true)
+        refreshLaunchAtLoginStatus(initialLoad: true)
     }
 
     var selectedAction: ActionDescriptor? {
@@ -364,6 +368,52 @@ final class AppModel: ObservableObject {
             settingsStatusMessage = "Saved runtime settings to \(runtimeSettingsPath) and synced provider secrets to Keychain."
         } catch {
             settingsStatusMessage = error.localizedDescription
+        }
+    }
+
+    func refreshLaunchAtLoginStatus(initialLoad: Bool = false) {
+        let status = SMAppService.mainApp.status
+        launchAtLoginEnabled = (status == .enabled)
+
+        switch status {
+        case .enabled:
+            launchAtLoginStatusMessage = "RightClick AI will start automatically when you log in."
+        case .notRegistered:
+            launchAtLoginStatusMessage = "RightClick AI will stay off until you launch it manually."
+        case .requiresApproval:
+            launchAtLoginStatusMessage = "macOS still requires approval in System Settings > General > Login Items."
+        case .notFound:
+            launchAtLoginStatusMessage = "Launch at login is unavailable from this app bundle."
+        @unknown default:
+            launchAtLoginStatusMessage = "Launch at login status is unavailable right now."
+        }
+
+        if !initialLoad {
+            settingsStatusMessage = launchAtLoginStatusMessage
+        }
+    }
+
+    func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            refreshLaunchAtLoginStatus(initialLoad: true)
+            settingsStatusMessage = "Could not update launch at login: \(error.localizedDescription)"
+            return
+        }
+
+        refreshLaunchAtLoginStatus(initialLoad: true)
+
+        if enabled, !launchAtLoginEnabled {
+            settingsStatusMessage = "RightClick AI asked macOS to launch it at login, but approval is still required."
+        } else if enabled {
+            settingsStatusMessage = "RightClick AI will now launch automatically when you log in."
+        } else {
+            settingsStatusMessage = "RightClick AI will no longer launch automatically when you log in."
         }
     }
 
