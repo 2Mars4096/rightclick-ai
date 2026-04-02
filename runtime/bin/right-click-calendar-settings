@@ -1,0 +1,9 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+install_root="$(cd "${script_dir}/.." && pwd)"
+settings_file="${install_root}/settings.env"
+
+open -e "${settings_file}"

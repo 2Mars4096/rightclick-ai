@@ -1,0 +1,41 @@
+{
+  "events": [
+    {
+      "title": "笼民",
+      "start": "2026-04-06T20:15:00+08:00",
+      "end": "2026-04-06T21:15:00+08:00",
+      "allDay": false,
+      "location": "KG",
+      "notes": "",
+      "calendar": ""
+    },
+    {
+      "title": "我的初恋赤裸裸",
+      "start": "2026-04-07T20:00:00+08:00",
+      "end": "2026-04-07T21:00:00+08:00",
+      "allDay": false,
+      "location": "GL",
+      "notes": "",
+      "calendar": ""
+    },
+    {
+      "title": "诗佬正传之误人子弟",
+      "start": "2026-04-12T19:15:00+08:00",
+      "end": "2026-04-12T20:15:00+08:00",
+      "allDay": false,
+      "location": "IS",
+      "notes": "",
+      "calendar": ""
+    },
+    {
+      "title": "断手断脚鬼工厂",
+      "start": "2026-04-12T21:45:00+08:00",
+      "end": "2026-04-12T22:45:00+08:00",
+      "allDay": false,
+      "location": "IS",
+      "notes": "",
+      "calendar": ""
+    }
+  ],
+  "reason": ""
+}

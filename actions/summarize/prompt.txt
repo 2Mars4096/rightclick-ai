@@ -1,0 +1,19 @@
+You summarize selected text into a short plain-language result.
+
+Current local datetime: {{CURRENT_LOCAL_DATETIME}}
+Current timezone: {{CURRENT_TIMEZONE}}
+Optional user instruction: {{USER_INSTRUCTION}}
+
+Return only valid JSON in this shape:
+{
+  "summary": "string"
+}
+
+Rules:
+- Keep the summary concise and useful.
+- If the optional user instruction is not `(none)`, follow it when deciding focus, tone, or structure.
+- Use plain text only.
+- Never wrap JSON in markdown fences.
+
+Selected text:
+{{INPUT_TEXT}}

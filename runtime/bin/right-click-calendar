@@ -1,0 +1,183 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+install_root="$(cd "${script_dir}/.." && pwd)"
+common_file="${install_root}/lib/runtime-common.sh"
+
+[[ -f "${common_file}" ]] || {
+  print -r -- "Missing runtime helper: ${common_file}" >&2
+  exit 1
+}
+
+source "${common_file}"
+
+action_cli="${script_dir}/right-click-action"
+queue_root="${install_root}/queue/add-to-calendar"
+pending_dir="${queue_root}/pending"
+processing_dir="${queue_root}/processing"
+failed_dir="${queue_root}/failed"
+lock_dir="${queue_root}/drain.lock"
+queue_enabled="${RCA_CALENDAR_QUEUE_ENABLED:-1}"
+queue_auto_drain="${RCA_CALENDAR_QUEUE_AUTO_DRAIN:-1}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  right-click-calendar [--dry-run] [text]
+  right-click-calendar --self-test
+  right-click-calendar --enqueue [text]
+  right-click-calendar --process-queue
+
+Notes:
+  - Normal live runs are queued by default and processed FIFO.
+  - --dry-run and --self-test bypass the queue.
+USAGE
+}
+
+ensure_queue_dirs() {
+  mkdir -p "${pending_dir}" "${processing_dir}" "${failed_dir}"
+}
+
+queue_job_id() {
+  local stamp=""
+  stamp="$(
+    /usr/bin/perl -MTime::HiRes=time -e 'printf("%.6f", time)'
+  )"
+  stamp="${stamp//./}"
+  printf '%s-%05d-%04d\n' "${stamp}" "$$" "${RANDOM:-0}"
+}
+
+collect_input_text() {
+  local text=""
+
+  if [[ ! -t 0 ]]; then
+    text="$(cat)"
+  elif (( $# > 0 )); then
+    text="$*"
+  fi
+
+  rc_trim_whitespace "${text}"
+}
+
+contains_passthrough_flag() {
+  local arg=""
+  for arg in "$@"; do
+    case "${arg}" in
+      --help|-h|--dry-run|--self-test|--edit-settings|--list-actions|--validate-action|--action)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+enqueue_job() {
+  local input_text="$1"
+  local job_file=""
+
+  ensure_queue_dirs
+  job_file="${pending_dir}/$(queue_job_id).txt"
+  printf '%s' "${input_text}" > "${job_file}"
+  printf '%s\n' "${job_file}"
+}
+
+spawn_queue_worker() {
+  if ! rc_is_true "${queue_auto_drain}"; then
+    return 0
+  fi
+
+  /usr/bin/nohup "${0}" --process-queue </dev/null >/dev/null 2>&1 &
+}
+
+drain_queue() {
+  local pending_job=""
+  local processing_job=""
+
+  ensure_queue_dirs
+  if ! mkdir "${lock_dir}" 2>/dev/null; then
+    exit 0
+  fi
+  trap 'rmdir "${lock_dir}" 2>/dev/null || true' EXIT
+
+  for pending_job in "${pending_dir}"/*.txt(N); do
+    [[ -f "${pending_job}" ]] || continue
+    processing_job="${processing_dir}/${pending_job:t}"
+
+    if ! mv "${pending_job}" "${processing_job}" 2>/dev/null; then
+      continue
+    fi
+
+    if RC_QUEUE_BYPASS=1 "${action_cli}" add-to-calendar < "${processing_job}"; then
+      rm -f "${processing_job}"
+    else
+      mv "${processing_job}" "${failed_dir}/${processing_job:t}" 2>/dev/null || true
+      rc_log "Queued add-to-calendar job failed: ${failed_dir}/${processing_job:t}"
+    fi
+  done
+}
+
+force_enqueue=0
+force_no_queue=0
+process_queue=0
+pass_args=()
+
+while (( $# > 0 )); do
+  case "$1" in
+    --enqueue)
+      force_enqueue=1
+      shift
+      ;;
+    --no-queue)
+      force_no_queue=1
+      shift
+      ;;
+    --process-queue|--drain-queue)
+      process_queue=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      pass_args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if (( process_queue )); then
+  drain_queue
+  exit 0
+fi
+
+if ! rc_is_true "${queue_enabled}"; then
+  force_no_queue=1
+fi
+
+if contains_passthrough_flag "${pass_args[@]}"; then
+  force_no_queue=1
+fi
+
+if [[ "${RC_QUEUE_BYPASS:-0}" == "1" ]]; then
+  force_no_queue=1
+fi
+
+if (( force_enqueue )) && (( force_no_queue )); then
+  rc_fail "--enqueue cannot be combined with queue-bypass options."
+fi
+
+if (( force_no_queue )); then
+  exec "${action_cli}" add-to-calendar "${pass_args[@]}"
+fi
+
+input_text="$(collect_input_text "${pass_args[@]}")"
+
+if [[ -z "${input_text}" ]]; then
+  exec "${action_cli}" add-to-calendar "${pass_args[@]}"
+fi
+
+enqueue_job "${input_text}" >/dev/null
+spawn_queue_worker

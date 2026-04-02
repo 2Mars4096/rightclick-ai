@@ -1,0 +1,277 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+export LC_ALL=en_US.UTF-8
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+install_root="$(cd "${script_dir}/.." && pwd)"
+common_file="${install_root}/lib/runtime-common.sh"
+
+[[ -f "${common_file}" ]] || {
+  print -r -- "Missing runtime helper: ${common_file}" >&2
+  exit 1
+}
+
+source "${common_file}"
+
+settings_file="${install_root}/settings.env"
+actions_root="${install_root}/actions"
+tools_js="${install_root}/lib/tools.js"
+create_event_script="${install_root}/lib/create-event.applescript"
+log_file="${RCA_HOME:-$HOME}/Library/Logs/${install_root:t}.log"
+
+export RC_INSTALL_ROOT="${install_root}"
+export RC_SETTINGS_FILE="${settings_file}"
+export RC_ACTIONS_ROOT="${actions_root}"
+export RC_TOOLS_JS="${tools_js}"
+export RC_CREATE_EVENT_SCRIPT="${create_event_script}"
+export RC_LOG_FILE="${log_file}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  right-click-action <action> [--dry-run] [--instruction <text>] [text]
+  right-click-action <action> --self-test
+  right-click-action --list-actions
+  right-click-action --validate-action <action>
+  right-click-action --edit-settings
+USAGE
+}
+
+load_action_manifest() {
+  local requested_action="$1"
+  local action_dir="${actions_root}/${requested_action}"
+  local manifest_file="${action_dir}/action.env"
+  local prompt_file=""
+  local handler_file=""
+  local mock_response_file=""
+
+  [[ "${requested_action}" =~ '^[A-Za-z0-9][A-Za-z0-9._-]*$' ]] || rc_fail "Invalid action name: ${requested_action}"
+  [[ -d "${action_dir}" ]] || rc_fail "Unknown action: ${requested_action}"
+  [[ -f "${manifest_file}" ]] || rc_fail "Missing action manifest: ${manifest_file}"
+
+  unset ACTION_ID ACTION_TITLE ACTION_SYSTEM_PROMPT ACTION_PROMPT_FILE ACTION_HANDLER ACTION_OUTPUT_MODE ACTION_SELF_TEST_INPUT ACTION_SELF_TEST_PROVIDER ACTION_MOCK_RESPONSE_FILE
+  source "${manifest_file}"
+
+  [[ -n "${ACTION_ID:-}" ]] || rc_fail "Action manifest is missing ACTION_ID: ${manifest_file}"
+  [[ "${ACTION_ID}" == "${requested_action}" ]] || rc_fail "ACTION_ID '${ACTION_ID}' does not match action directory '${requested_action}'."
+  [[ -n "${ACTION_PROMPT_FILE:-}" ]] || rc_fail "Action manifest is missing ACTION_PROMPT_FILE: ${manifest_file}"
+  [[ -n "${ACTION_HANDLER:-}" ]] || rc_fail "Action manifest is missing ACTION_HANDLER: ${manifest_file}"
+
+  prompt_file="$(rc_resolve_path "${action_dir}" "${ACTION_PROMPT_FILE}")" || rc_fail "Could not resolve ACTION_PROMPT_FILE for ${requested_action}."
+  handler_file="$(rc_resolve_path "${action_dir}" "${ACTION_HANDLER}")" || rc_fail "Could not resolve ACTION_HANDLER for ${requested_action}."
+  [[ -f "${prompt_file}" ]] || rc_fail "Missing action prompt file: ${prompt_file}"
+  [[ -x "${handler_file}" ]] || rc_fail "Missing executable action handler: ${handler_file}"
+
+  if [[ -n "${ACTION_MOCK_RESPONSE_FILE:-}" ]]; then
+    mock_response_file="$(rc_resolve_path "${action_dir}" "${ACTION_MOCK_RESPONSE_FILE}")" || rc_fail "Could not resolve ACTION_MOCK_RESPONSE_FILE for ${requested_action}."
+    [[ -f "${mock_response_file}" ]] || rc_fail "Missing action mock response file: ${mock_response_file}"
+  fi
+
+  export RC_ACTION_NAME="${requested_action}"
+  export RC_ACTION_DIR="${action_dir}"
+  export RC_ACTION_MANIFEST="${manifest_file}"
+  export RC_ACTION_TITLE="${ACTION_TITLE:-${requested_action}}"
+  export RC_ACTION_SYSTEM_PROMPT="${ACTION_SYSTEM_PROMPT:-}"
+  export RC_ACTION_PROMPT_FILE="${prompt_file}"
+  export RC_ACTION_HANDLER="${handler_file}"
+  export RC_ACTION_OUTPUT_MODE="${ACTION_OUTPUT_MODE:-text}"
+  export RC_ACTION_SELF_TEST_INPUT="${ACTION_SELF_TEST_INPUT:-}"
+  export RC_ACTION_SELF_TEST_PROVIDER="${ACTION_SELF_TEST_PROVIDER:-mock}"
+  export RC_ACTION_MOCK_RESPONSE_FILE="${mock_response_file}"
+}
+
+list_actions() {
+  local manifest_file=""
+  local action_name=""
+  local action_title=""
+
+  for manifest_file in "${actions_root}"/*/action.env(N); do
+    action_name="$(basename "$(dirname "${manifest_file}")")"
+    action_title="$(
+      unset ACTION_ID ACTION_TITLE ACTION_SYSTEM_PROMPT ACTION_PROMPT_FILE ACTION_HANDLER ACTION_OUTPUT_MODE ACTION_SELF_TEST_INPUT ACTION_SELF_TEST_PROVIDER ACTION_MOCK_RESPONSE_FILE
+      source "${manifest_file}"
+      printf '%s' "${ACTION_TITLE:-${action_name}}"
+    )"
+    printf '%s\t%s\n' "${action_name}" "${action_title}"
+  done
+}
+
+action_name=""
+dry_run=0
+self_test=0
+validate_action=0
+list_only=0
+user_instruction=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --list-actions)
+      list_only=1
+      shift
+      ;;
+    --validate-action)
+      validate_action=1
+      shift
+      (( $# > 0 )) || rc_fail "--validate-action requires an action name."
+      action_name="$1"
+      shift
+      ;;
+    --edit-settings)
+      [[ -f "${settings_file}" ]] || rc_fail "settings.env is missing. Re-run install.sh."
+      open -e "${settings_file}"
+      exit 0
+      ;;
+    --action)
+      shift
+      (( $# > 0 )) || rc_fail "--action requires an action name."
+      action_name="$1"
+      shift
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    --instruction)
+      shift
+      (( $# > 0 )) || rc_fail "--instruction requires text."
+      user_instruction="$1"
+      shift
+      ;;
+    --self-test)
+      self_test=1
+      dry_run=1
+      shift
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      rc_fail "Unknown option: $1"
+      ;;
+    *)
+      if [[ -z "${action_name}" ]]; then
+        action_name="$1"
+        shift
+      else
+        break
+      fi
+      ;;
+  esac
+done
+
+if (( list_only )); then
+  list_actions
+  exit 0
+fi
+
+[[ -n "${action_name}" ]] || {
+  usage >&2
+  exit 1
+}
+
+load_action_manifest "${action_name}"
+
+if (( validate_action )); then
+  printf 'Validated action: %s\t%s\n' "${RC_ACTION_NAME}" "${RC_ACTION_TITLE}"
+  printf 'Prompt: %s\n' "${RC_ACTION_PROMPT_FILE}"
+  printf 'Handler: %s\n' "${RC_ACTION_HANDLER}"
+  printf 'Output mode: %s\n' "${RC_ACTION_OUTPUT_MODE}"
+  if [[ -n "${RC_ACTION_MOCK_RESPONSE_FILE:-}" ]]; then
+    printf 'Mock response: %s\n' "${RC_ACTION_MOCK_RESPONSE_FILE}"
+  fi
+  exit 0
+fi
+
+[[ -f "${settings_file}" ]] || {
+  rc_log "settings.env is missing."
+  rc_notify "${RC_ACTION_TITLE}" "settings.env is missing. Re-run install.sh."
+  exit 1
+}
+
+set -a
+source "${settings_file}"
+set +a
+
+provider="${PROVIDER:-openai_compatible}"
+timezone="${TIMEZONE:-UTC}"
+default_event_duration_minutes="${DEFAULT_EVENT_DURATION_MINUTES:-60}"
+notify_on_failure="${NOTIFY_ON_FAILURE:-1}"
+
+input_text=""
+if (( self_test )); then
+  provider="${RC_ACTION_SELF_TEST_PROVIDER:-mock}"
+  input_text="${RC_ACTION_SELF_TEST_INPUT:-Sample action input.}"
+else
+  if [[ ! -t 0 ]]; then
+    input_text="$(cat)"
+  elif (( $# > 0 )); then
+    input_text="$*"
+  fi
+fi
+
+input_text="$(rc_trim_whitespace "${input_text}")"
+
+if [[ -z "${input_text}" ]]; then
+  rc_log "No input text was provided for action '${RC_ACTION_NAME}'."
+  if rc_is_true "${notify_on_failure}"; then
+    rc_notify "${RC_ACTION_TITLE}" "No selected text was provided."
+  fi
+  exit 1
+fi
+
+provider_script="${install_root}/providers/${provider}.sh"
+if [[ ! -x "${provider_script}" ]]; then
+  rc_log "Unknown provider for action '${RC_ACTION_NAME}': ${provider}"
+  if rc_is_true "${notify_on_failure}"; then
+    rc_notify "${RC_ACTION_TITLE}" "Unknown provider '${provider}'."
+  fi
+  exit 1
+fi
+
+prompt_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-prompt.XXXXXX")"
+input_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-input.XXXXXX")"
+raw_content_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-model-output.XXXXXX")"
+response_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-provider-response.XXXXXX")"
+provider_error_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-provider-error.XXXXXX")"
+trap 'rm -f "${prompt_tmp}" "${input_tmp}" "${raw_content_tmp}" "${response_tmp}" "${provider_error_tmp}"' EXIT
+
+export RC_ACTION_DRY_RUN="${dry_run}"
+export RC_ACTION_SELF_TEST="${self_test}"
+export RC_ACTION_PROVIDER="${provider}"
+export RC_ACTION_INPUT_FILE="${input_tmp}"
+export RC_ACTION_RENDERED_PROMPT_FILE="${prompt_tmp}"
+export RC_ACTION_RAW_CONTENT_FILE="${raw_content_tmp}"
+export RC_ACTION_PROVIDER_RESPONSE_FILE="${response_tmp}"
+export RC_ACTION_PROVIDER_ERROR_FILE="${provider_error_tmp}"
+export RC_ACTION_USER_INSTRUCTION="${user_instruction}"
+
+if [[ "${provider}" == "mock" ]] && [[ -n "${RC_ACTION_MOCK_RESPONSE_FILE:-}" ]]; then
+  export RC_MOCK_RESPONSE_FILE="${RC_ACTION_MOCK_RESPONSE_FILE}"
+else
+  unset RC_MOCK_RESPONSE_FILE
+fi
+
+current_datetime="$(/bin/date '+%Y-%m-%d %H:%M:%S %z')"
+printf '%s' "${input_text}" > "${input_tmp}"
+/usr/bin/osascript -l JavaScript "${tools_js}" render-prompt "${RC_ACTION_PROMPT_FILE}" "${input_tmp}" "${current_datetime}" "${timezone}" "${default_event_duration_minutes}" "${RC_ACTION_USER_INSTRUCTION}" > "${prompt_tmp}"
+
+if ! INSTALL_ROOT="${install_root}" "${provider_script}" "${prompt_tmp}" "${raw_content_tmp}" "${response_tmp}" 2> "${provider_error_tmp}"; then
+  error_message="$(rc_trim_whitespace "$(<"${provider_error_tmp}")")"
+  if [[ -z "${error_message}" ]]; then
+    error_message="Provider request failed."
+  fi
+  rc_log "${provider} failed for action '${RC_ACTION_NAME}': ${error_message}"
+  if rc_is_true "${notify_on_failure}"; then
+    rc_notify "${RC_ACTION_TITLE}" "${error_message}"
+  fi
+  exit 1
+fi
+
+"${RC_ACTION_HANDLER}"

@@ -1,0 +1,3 @@
+.build/
+RightClickApp.xcodeproj/xcuserdata/
+*.xcuserstate

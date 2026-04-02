@@ -1,0 +1,266 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000030 /* RightClickAIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000020 /* RightClickAIApp.swift */; };
+		A00000000000000000000031 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* AppDelegate.swift */; };
+		A00000000000000000000032 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* AppModel.swift */; };
+		A00000000000000000000033 /* SelectedTextServiceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000023 /* SelectedTextServiceProvider.swift */; };
+		A00000000000000000000034 /* ReviewWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000024 /* ReviewWindowController.swift */; };
+		A00000000000000000000035 /* RuntimeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000025 /* RuntimeBridge.swift */; };
+		A00000000000000000000036 /* ReviewWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* ReviewWorkspaceView.swift */; };
+		A00000000000000000000037 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* SettingsView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A00000000000000000000011 /* RightClickApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RightClickApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000020 /* RightClickAIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RightClickAIApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000021 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		A00000000000000000000022 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		A00000000000000000000023 /* SelectedTextServiceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectedTextServiceProvider.swift; sourceTree = "<group>"; };
+		A00000000000000000000024 /* ReviewWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWindowController.swift; sourceTree = "<group>"; };
+		A00000000000000000000025 /* RuntimeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeBridge.swift; sourceTree = "<group>"; };
+		A00000000000000000000026 /* ReviewWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWorkspaceView.swift; sourceTree = "<group>"; };
+		A00000000000000000000027 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A00000000000000000000028 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A00000000000000000000019 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000004 /* RightClickApp */,
+				A00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000011 /* RightClickApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* RightClickApp */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000020 /* RightClickAIApp.swift */,
+				A00000000000000000000021 /* AppDelegate.swift */,
+				A00000000000000000000022 /* AppModel.swift */,
+				A00000000000000000000023 /* SelectedTextServiceProvider.swift */,
+				A00000000000000000000024 /* ReviewWindowController.swift */,
+				A00000000000000000000025 /* RuntimeBridge.swift */,
+				A00000000000000000000005 /* Views */,
+				A00000000000000000000006 /* Resources */,
+			);
+			path = RightClickApp;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000005 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000026 /* ReviewWorkspaceView.swift */,
+				A00000000000000000000027 /* SettingsView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000006 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000028 /* Info.plist */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000010 /* RightClickApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000013 /* Build configuration list for PBXNativeTarget "RightClickApp" */;
+			buildPhases = (
+				A00000000000000000000018 /* Sources */,
+				A00000000000000000000019 /* Frameworks */,
+				A0000000000000000000001A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RightClickApp;
+			productName = RightClickApp;
+			productReference = A00000000000000000000011 /* RightClickApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A00000000000000000000010 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000012 /* Build configuration list for PBXProject "RightClickApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A00000000000000000000002;
+			productRefGroup = A00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000010 /* RightClickApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A0000000000000000000001A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A00000000000000000000018 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000030 /* RightClickAIApp.swift in Sources */,
+				A00000000000000000000031 /* AppDelegate.swift in Sources */,
+				A00000000000000000000032 /* AppModel.swift in Sources */,
+				A00000000000000000000033 /* SelectedTextServiceProvider.swift in Sources */,
+				A00000000000000000000034 /* ReviewWindowController.swift in Sources */,
+				A00000000000000000000035 /* RuntimeBridge.swift in Sources */,
+				A00000000000000000000036 /* ReviewWorkspaceView.swift in Sources */,
+				A00000000000000000000037 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000014 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A00000000000000000000015 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A00000000000000000000016 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RightClickApp/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rightclicklabs.RightClickApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A00000000000000000000017 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RightClickApp/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rightclicklabs.RightClickApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000012 /* Build configuration list for PBXProject "RightClickApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000014 /* Debug */,
+				A00000000000000000000015 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000013 /* Build configuration list for PBXNativeTarget "RightClickApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000016 /* Debug */,
+				A00000000000000000000017 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}
