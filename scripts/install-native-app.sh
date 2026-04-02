@@ -5,7 +5,7 @@ set -euo pipefail
 APP_NAME="${RCA_NATIVE_APP_NAME:-RightClick AI.app}"
 RUNTIME_APP_ID="${RCA_RUNTIME_APP_ID:-RightClickAI}"
 DIRECT_CALENDAR_SERVICE_NAME="${RCA_DIRECT_CALENDAR_SERVICE_NAME:-Add to Calendar}"
-INSTALL_DIRECT_CALENDAR_WORKFLOW="${RCA_INSTALL_DIRECT_CALENDAR_WORKFLOW:-1}"
+INSTALL_ACTION_SERVICE_WORKFLOWS="${RCA_INSTALL_ACTION_SERVICE_WORKFLOWS:-1}"
 REMOVE_DIRECT_CALENDAR_WORKFLOW="${RCA_REMOVE_DIRECT_CALENDAR_WORKFLOW:-0}"
 SKIP_PBS_UPDATE="${RCA_SKIP_PBS:-0}"
 OPEN_APP_AFTER_INSTALL="${RCA_OPEN_APP_AFTER_INSTALL:-1}"
@@ -67,18 +67,6 @@ remove_direct_calendar_workflow() {
   fi
 }
 
-install_direct_calendar_workflow() {
-  local user_home="$1"
-  local runtime_app_id="$2"
-
-  RCA_HOME="${user_home}" \
-  RCA_APP_ID="${runtime_app_id}" \
-  RCA_SKIP_PBS=1 \
-  RCA_OPEN_SETTINGS=0 \
-  RCA_INSTALL_SERVICE_WORKFLOW=1 \
-    "${REPO_ROOT}/install.sh" >/dev/null
-}
-
 SOURCE_APP_BUNDLE="${RCA_APP_BUNDLE:-}"
 if [[ -z "${SOURCE_APP_BUNDLE}" ]]; then
   SOURCE_APP_BUNDLE="$(find_default_app_bundle)"
@@ -103,15 +91,13 @@ RCA_HOME="${USER_HOME}" \
 RCA_APP_ID="${RUNTIME_APP_ID}" \
 RCA_SKIP_PBS="${SKIP_PBS_UPDATE}" \
 RCA_OPEN_SETTINGS=0 \
-RCA_INSTALL_SERVICE_WORKFLOW=0 \
+RCA_INSTALL_SERVICE_WORKFLOW="${INSTALL_ACTION_SERVICE_WORKFLOWS}" \
   "${REPO_ROOT}/install.sh"
 
 copy_app_bundle "${SOURCE_APP_BUNDLE}" "${INSTALLED_APP_PATH}"
 /usr/bin/plutil -lint "${INSTALLED_APP_PATH}/Contents/Info.plist" >/dev/null
 
-if [[ "${INSTALL_DIRECT_CALENDAR_WORKFLOW}" == "1" ]]; then
-  install_direct_calendar_workflow "${USER_HOME}" "${RUNTIME_APP_ID}"
-elif [[ "${REMOVE_DIRECT_CALENDAR_WORKFLOW}" == "1" ]]; then
+if [[ "${INSTALL_ACTION_SERVICE_WORKFLOWS}" != "1" && "${REMOVE_DIRECT_CALENDAR_WORKFLOW}" == "1" ]]; then
   remove_direct_calendar_workflow "${DIRECT_CALENDAR_WORKFLOW_PATH}"
 fi
 
@@ -123,8 +109,8 @@ printf 'Installed app: %s\n' "${INSTALLED_APP_PATH}"
 printf 'Installed runtime: %s\n' "${USER_HOME}/Library/Application Support/${RUNTIME_APP_ID}"
 printf 'Settings: %s\n' "${USER_HOME}/Library/Application Support/${RUNTIME_APP_ID}/settings.env"
 printf 'Service menu item: RightClick AI\n'
-if [[ "${INSTALL_DIRECT_CALENDAR_WORKFLOW}" == "1" ]]; then
-  printf 'Direct calendar service: %s\n' "${DIRECT_CALENDAR_SERVICE_NAME}"
+if [[ "${INSTALL_ACTION_SERVICE_WORKFLOWS}" == "1" ]]; then
+  printf 'Direct service shortcuts installed, including: %s\n' "${DIRECT_CALENDAR_SERVICE_NAME}"
 fi
 printf 'First launch opens in-app settings if provider setup is still missing.\n'
 printf 'After setup, RightClick AI stays available from the menu bar and selected-text Services.\n'

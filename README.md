@@ -26,6 +26,7 @@ What exists today:
 - native provider settings UI with Keychain-backed API secrets
 - native app now behaves like a menu bar utility instead of forcing the review window on launch
 - native settings now let the user enable or disable launch at login
+- direct Services for every current built-in action, not only calendar
 - clipboard fallback in the native review window for apps where Services are weak
 - direct `Add to Calendar` service backed by the same shared runtime
 - FIFO queueing for repeated live calendar runs through `right-click-calendar`
@@ -53,8 +54,8 @@ The native installer:
 
 - installs the shared runtime into `~/Library/Application Support/RightClickAI`
 - copies the app bundle into `~/Applications/RightClick AI.app`
-- refreshes macOS Services so the `RightClick AI` and `Add to Calendar` menu items appear in text-selection context menus
-- installs a direct `Add to Calendar` Quick Action backed by the same `RightClickAI` runtime
+- refreshes macOS Services so the direct action menu items appear in text-selection context menus
+- installs direct Services for the current built-in actions, including `Add to Calendar`, `Draft Response`, `Explain`, `Extract Action Items`, `Polish Draft`, `Rewrite Friendly`, and `Summarize`
 - opens in-app settings on first launch if provider setup is still incomplete
 - keeps the app available from the menu bar after setup
 - falls back to an existing `RightClickCalendar` runtime path in the native app so older prototype installs still open cleanly
@@ -65,7 +66,7 @@ Legacy runtime + Quick Action install:
 ./install.sh
 ```
 
-That path is still useful for the calendar-only prototype and local shell smoke tests. It installs `Add to Calendar` into `~/Library/Services/Add to Calendar.workflow`.
+That path is still useful for local shell smoke tests. It installs the direct built-in Services into `~/Library/Services/`.
 
 ## Configure
 
@@ -96,7 +97,7 @@ You can also edit the calendar extraction prompt directly in:
 
 `~/Library/Application Support/RightClickAI/actions/add-to-calendar/prompt.txt`
 
-The direct `Add to Calendar` service is the fastest current path for calendar use. It sends selected text through the shared runtime and, for live runs, queues requests FIFO so repeated invocations do not overlap.
+The direct Services are the fastest current path. `Add to Calendar` sends selected text through the shared runtime and, for live runs, queues requests FIFO so repeated invocations do not overlap. The text actions copy their output straight to the clipboard.
 
 ## Custom Provider
 

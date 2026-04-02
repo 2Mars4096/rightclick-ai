@@ -42,6 +42,8 @@ Example:
 id: add-to-calendar
 title: Add to Calendar
 description: Extract calendar events from selected text.
+serviceName: Add to Calendar
+serviceKind: calendar
 inputKinds:
   - selected_text
 provider: default
@@ -65,6 +67,10 @@ capabilities:
   - user-facing name
 - `description`
   - short summary
+- `serviceName`
+  - label for the direct macOS Service item when the action installs as a shortcut
+- `serviceKind`
+  - `calendar` for direct side effects like event creation, `clipboard` for actions that should copy text output immediately
 - `inputKinds`
   - for example `selected_text`, later `image`, `file`, `url`
 - `provider`

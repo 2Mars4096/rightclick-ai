@@ -8,7 +8,7 @@
         <key>NSMenuItem</key>
         <dict>
           <key>default</key>
-          <string>Add to Calendar</string>
+          <string>__SERVICE_NAME__</string>
         </dict>
         <key>NSMessage</key>
         <string>runWorkflowAsService</string>

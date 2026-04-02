@@ -1,0 +1,56 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+install_root="$(cd "${script_dir}/.." && pwd)"
+common_file="${install_root}/lib/runtime-common.sh"
+action_name="${1:-}"
+
+[[ -f "${common_file}" ]] || {
+  print -r -- "Missing runtime helper: ${common_file}" >&2
+  exit 1
+}
+
+source "${common_file}"
+
+[[ -n "${action_name}" ]] || {
+  print -r -- "Usage: right-click-service-action <action>" >&2
+  exit 1
+}
+
+action_manifest="${install_root}/actions/${action_name}/action.env"
+[[ -f "${action_manifest}" ]] || {
+  rc_log "Missing action manifest for direct service: ${action_manifest}"
+  rc_notify "RightClick AI" "Unknown service action '${action_name}'."
+  exit 1
+}
+
+unset ACTION_ID ACTION_TITLE ACTION_SERVICE_NAME ACTION_SERVICE_KIND ACTION_SYSTEM_PROMPT ACTION_PROMPT_FILE ACTION_HANDLER ACTION_OUTPUT_MODE ACTION_SELF_TEST_INPUT ACTION_SELF_TEST_PROVIDER ACTION_MOCK_RESPONSE_FILE
+source "${action_manifest}"
+
+service_name="${ACTION_SERVICE_NAME:-${ACTION_TITLE:-${action_name}}}"
+service_kind="${ACTION_SERVICE_KIND:-clipboard}"
+action_runtime="${script_dir}/right-click-action"
+calendar_runtime="${script_dir}/right-click-calendar"
+
+case "${service_kind}" in
+  calendar)
+    exec "${calendar_runtime}"
+    ;;
+  clipboard)
+    output="$(/bin/cat | "${action_runtime}" "${action_name}")" || exit $?
+    if [[ -z "$(rc_trim_whitespace "${output}")" ]]; then
+      rc_notify "${service_name}" "No output was returned."
+      exit 1
+    fi
+
+    printf '%s' "${output}" | /usr/bin/pbcopy
+    rc_notify "${service_name}" "Copied to clipboard."
+    ;;
+  *)
+    rc_log "Unknown direct service kind '${service_kind}' for action '${action_name}'."
+    rc_notify "${service_name}" "Unsupported direct service kind '${service_kind}'."
+    exit 1
+    ;;
+esac

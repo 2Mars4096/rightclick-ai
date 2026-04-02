@@ -9,6 +9,7 @@ fake_app_bundle="${fake_build_root}/RightClickApp.app"
 installed_app="${test_home}/Applications/RightClick AI.app"
 runtime_root="${test_home}/Library/Application Support/RightClickAI"
 direct_workflow="${test_home}/Library/Services/Add to Calendar.workflow/Contents/document.wflow"
+draft_workflow="${test_home}/Library/Services/Draft Response.workflow/Contents/document.wflow"
 trap 'rm -rf "${test_home}" "${fake_build_root}"' EXIT
 
 mkdir -p "${fake_app_bundle}/Contents/MacOS"
@@ -40,5 +41,8 @@ RCA_OPEN_APP_AFTER_INSTALL=0 \
 [[ -d "${installed_app}" ]]
 [[ -f "${installed_app}/Contents/Info.plist" ]]
 [[ -x "${runtime_root}/bin/right-click-action" ]]
+[[ -x "${runtime_root}/bin/right-click-service-action" ]]
 [[ -f "${direct_workflow}" ]]
-/usr/bin/grep -F "${test_home}/Library/Application Support/RightClickAI/bin/right-click-calendar" "${direct_workflow}" >/dev/null
+[[ -f "${draft_workflow}" ]]
+/usr/bin/grep -F 'right-click-service-action" "add-to-calendar"' "${direct_workflow}" >/dev/null
+/usr/bin/grep -F 'right-click-service-action" "draft-response"' "${draft_workflow}" >/dev/null

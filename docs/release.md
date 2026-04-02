@@ -21,7 +21,7 @@ That gives you:
 - a shared runtime installed under `~/Library/Application Support/RightClickAI`
 - a menu bar utility that opens Settings on first run if provider setup is incomplete
 - a native launch-at-login toggle in Settings for keeping the menu bar app running across reboot and login
-- a generic `RightClick AI` selected-text service plus a direct `Add to Calendar` service backed by the same runtime
+- a generic `RightClick AI` selected-text service plus direct built-in Services for `Add to Calendar`, `Draft Response`, `Explain`, `Extract Action Items`, `Polish Draft`, `Rewrite Friendly`, and `Summarize`
 
 If a developer machine already has an older `RightClickCalendar` runtime, the native app still falls back to that path until the new runtime is installed.
 
