@@ -34,7 +34,15 @@ struct ClipboardPrivacyPolicy: Codable, Hashable {
         sensitiveSourceIdentifiers: Set<String> = [
             "com.apple.keychainaccess",
             "com.apple.passwordassistant",
-            "com.apple.securityagent"
+            "com.apple.securityagent",
+            "com.agilebits.onepassword7",
+            "com.1password.1password",
+            "com.bitwarden.desktop",
+            "org.keepassxc.keepassxc",
+            "com.lastpass.LastPass",
+            "com.dashlane.dashlanephonefinal",
+            "com.keepersecurity.passwordmanager",
+            "com.robinhood.mymacotp"
         ]
     ) {
         self.suppressSensitiveSources = suppressSensitiveSources

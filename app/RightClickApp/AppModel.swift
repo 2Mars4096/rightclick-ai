@@ -3,6 +3,10 @@ import Combine
 import Foundation
 import ServiceManagement
 
+extension Notification.Name {
+    static let rightClickClipboardHotKeyPreferenceDidChange = Notification.Name("RightClickAI.clipboardHotKeyPreferenceDidChange")
+}
+
 struct ActionDescriptor: Identifiable, Hashable {
     let id: String
     let title: String
@@ -40,13 +44,44 @@ struct RuntimePreview: Equatable {
     let content: RuntimePreviewContent
 }
 
+enum WorkspaceMode: String, CaseIterable, Identifiable {
+    case selection
+    case clipboard
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .selection:
+            return "Selection"
+        case .clipboard:
+            return "Clipboard"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .selection:
+            return "Run an AI action on the text you selected in another app."
+        case .clipboard:
+            return "Search, review, and reuse recent clipboard items with the same action runtime."
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private static let runtimeRootDefaultsKey = "rightClick.runtimeRootPath"
+    private static let workspaceModeDefaultsKey = "rightClick.workspaceMode"
+    private static let clipboardHotkeyEnabledDefaultsKey = "rightClick.clipboardHotkeyEnabled"
     static let defaultRuntimeRootPath = "~/Library/Application Support/RightClickAI"
     private static let legacyRuntimeRootPath = "~/Library/Application Support/RightClickCalendar"
 
     static let shared = AppModel(runtimeBridge: InstalledRuntimeBridge())
+
+    let clipboardManager: ClipboardManager
 
     @Published var selectedText = ""
     @Published var selectedActionID = ""
@@ -64,16 +99,43 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(runtimeRootPath, forKey: Self.runtimeRootDefaultsKey)
         }
     }
+    @Published var activeWorkspaceMode: WorkspaceMode {
+        didSet {
+            UserDefaults.standard.set(activeWorkspaceMode.rawValue, forKey: Self.workspaceModeDefaultsKey)
+        }
+    }
+    @Published var clipboardSearchQuery = "" {
+        didSet {
+            reconcileClipboardSelection()
+        }
+    }
+    @Published var selectedClipboardItemID: ClipboardItem.ID?
+    @Published var clipboardHotkeyEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(clipboardHotkeyEnabled, forKey: Self.clipboardHotkeyEnabledDefaultsKey)
+            NotificationCenter.default.post(name: .rightClickClipboardHotKeyPreferenceDidChange, object: self)
+        }
+    }
 
     private let runtimeBridge: any RuntimeBridge
+    private var cancellables: Set<AnyCancellable> = []
 
-    init(runtimeBridge: any RuntimeBridge) {
+    init(
+        runtimeBridge: any RuntimeBridge,
+        clipboardManager: ClipboardManager = ClipboardManager()
+    ) {
         self.runtimeBridge = runtimeBridge
+        self.clipboardManager = clipboardManager
         runtimeRootPath = Self.initialRuntimeRootPath()
+        activeWorkspaceMode = Self.initialWorkspaceMode()
+        clipboardHotkeyEnabled = Self.initialClipboardHotkeyEnabled()
         availableActions = []
+
+        configureClipboardBindings()
         reloadActions(initialLoad: true)
         reloadRuntimeSettings(initialLoad: true)
         refreshLaunchAtLoginStatus(initialLoad: true)
+        reconcileClipboardSelection()
     }
 
     var selectedAction: ActionDescriptor? {
@@ -98,6 +160,62 @@ final class AppModel: ObservableObject {
 
     var runtimeKeychainServiceName: String {
         runtimeConfiguration.keychainServiceName
+    }
+
+    var selectedProviderTitle: String {
+        RuntimeProviderOption.title(for: runtimeSettings.provider)
+    }
+
+    var directServiceActionTitles: [String] {
+        availableActions.map(\.title)
+    }
+
+    var filteredClipboardItems: [ClipboardItem] {
+        clipboardManager.search(query: clipboardSearchQuery)
+    }
+
+    var selectedClipboardItem: ClipboardItem? {
+        guard let selectedClipboardItemID else {
+            return filteredClipboardItems.first
+        }
+
+        return clipboardManager.item(withID: selectedClipboardItemID)
+    }
+
+    var selectedClipboardCompatibilities: [ClipboardActionCompatibility] {
+        guard let itemID = selectedClipboardItem?.id else {
+            return []
+        }
+
+        return clipboardManager.compatibilities(for: availableActions, itemID: itemID)
+    }
+
+    var clipboardHotkeyShortcutLabel: String {
+        "⌃⌥⌘V"
+    }
+
+    var clipboardStatusMessage: String {
+        clipboardManager.statusMessage
+    }
+
+    var clipboardStateSummary: String {
+        if clipboardManager.isPaused {
+            return clipboardManager.pauseReason.map { "Capture paused: \($0)" } ?? "Capture paused."
+        }
+
+        if filteredClipboardItems.isEmpty {
+            return "Clipboard history is empty."
+        }
+
+        return "Showing \(filteredClipboardItems.count) saved clipboard item(s)."
+    }
+
+    var canUseSelectedClipboardItemInReview: Bool {
+        selectedClipboardItem?.canRestoreAsText == true
+    }
+
+    var canRestoreSelectedClipboardItem: Bool {
+        selectedClipboardItem?.canRestoreAsText == true
     }
 
     var needsProviderSetup: Bool {
@@ -191,6 +309,8 @@ final class AppModel: ObservableObject {
         userInstruction = ""
         launchSource = source
         preview = nil
+        activeWorkspaceMode = .selection
+
         do {
             let actions = try loadActions()
             if actions.isEmpty {
@@ -215,6 +335,133 @@ final class AppModel: ObservableObject {
         }
 
         acceptSelectedText(clipboardText, source: "Clipboard Fallback")
+    }
+
+    func showSelectedTextWorkspace() {
+        activeWorkspaceMode = .selection
+    }
+
+    func showClipboardWorkspace() {
+        startClipboardMonitoringIfNeeded()
+        activeWorkspaceMode = .clipboard
+        reconcileClipboardSelection()
+
+        if filteredClipboardItems.isEmpty {
+            statusMessage = "Clipboard history is ready. Copy text, then use the clipboard workspace or the direct Services."
+        }
+    }
+
+    func startClipboardMonitoringIfNeeded() {
+        clipboardManager.startMonitoring()
+        reconcileClipboardSelection()
+    }
+
+    func setClipboardHotkeyEnabled(_ enabled: Bool) {
+        guard clipboardHotkeyEnabled != enabled else {
+            return
+        }
+
+        clipboardHotkeyEnabled = enabled
+        settingsStatusMessage = enabled
+            ? "Clipboard history hotkey enabled. Use \(clipboardHotkeyShortcutLabel) to open it quickly."
+            : "Clipboard history hotkey disabled."
+    }
+
+    func toggleClipboardPause() {
+        if clipboardManager.isPaused {
+            clipboardManager.resume()
+        } else {
+            clipboardManager.pause(reason: "paused from the RightClick AI menu")
+        }
+
+        objectWillChange.send()
+    }
+
+    func clearMostRecentClipboardItem() {
+        _ = clipboardManager.clearMostRecent()
+        reconcileClipboardSelection()
+        objectWillChange.send()
+    }
+
+    func clearRecentClipboardItems() {
+        _ = clipboardManager.clearRecent()
+        reconcileClipboardSelection()
+        objectWillChange.send()
+    }
+
+    func clearAllClipboardItems() {
+        _ = clipboardManager.clearAll()
+        reconcileClipboardSelection()
+        objectWillChange.send()
+    }
+
+    func restoreSelectedClipboardItem() {
+        guard let item = selectedClipboardItem else {
+            statusMessage = "Choose a clipboard item first."
+            return
+        }
+
+        _ = clipboardManager.restore(itemID: item.id)
+        objectWillChange.send()
+    }
+
+    func restoreClipboardItem(_ itemID: ClipboardItem.ID) {
+        _ = clipboardManager.restore(itemID: itemID)
+        objectWillChange.send()
+    }
+
+    func togglePinnedClipboardItem(_ itemID: ClipboardItem.ID) {
+        guard let item = clipboardManager.item(withID: itemID) else {
+            return
+        }
+
+        _ = clipboardManager.setPinned(!item.isPinned, for: itemID)
+        objectWillChange.send()
+    }
+
+    func toggleFavoriteClipboardItem(_ itemID: ClipboardItem.ID) {
+        guard let item = clipboardManager.item(withID: itemID) else {
+            return
+        }
+
+        _ = clipboardManager.setFavorite(!item.isFavorite, for: itemID)
+        objectWillChange.send()
+    }
+
+    func removeClipboardItem(_ itemID: ClipboardItem.ID) {
+        _ = clipboardManager.remove(itemID: itemID, reason: "Removed a clipboard item from history.")
+        reconcileClipboardSelection()
+        objectWillChange.send()
+    }
+
+    func useSelectedClipboardItemInReview() {
+        guard let item = selectedClipboardItem else {
+            statusMessage = "Choose a clipboard item first."
+            return
+        }
+
+        routeClipboardItemToReview(itemID: item.id)
+    }
+
+    func useClipboardItemInReview(_ itemID: ClipboardItem.ID) {
+        routeClipboardItemToReview(itemID: itemID)
+    }
+
+    func prepareClipboardAction(_ actionID: String) {
+        guard let item = selectedClipboardItem else {
+            statusMessage = "Choose a clipboard item first."
+            return
+        }
+
+        routeClipboardItemToReview(itemID: item.id, actionID: actionID, prepareAfterRouting: true)
+    }
+
+    func prepareClipboardAction(itemID: ClipboardItem.ID, actionID: String) {
+        routeClipboardItemToReview(itemID: itemID, actionID: actionID, prepareAfterRouting: true)
+    }
+
+    func compatibleClipboardActions(for item: ClipboardItem) -> [ClipboardActionCompatibility] {
+        clipboardManager.compatibilities(for: availableActions, itemID: item.id)
     }
 
     private var normalizedUserInstruction: String? {
@@ -417,6 +664,64 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func configureClipboardBindings() {
+        clipboardManager.objectWillChange
+            .sink { [weak self] in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        clipboardManager.$items
+            .sink { [weak self] _ in
+                self?.reconcileClipboardSelection()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func routeClipboardItemToReview(
+        itemID: ClipboardItem.ID,
+        actionID: String? = nil,
+        prepareAfterRouting: Bool = false
+    ) {
+        guard let item = clipboardManager.item(withID: itemID) else {
+            statusMessage = "The clipboard item no longer exists."
+            return
+        }
+
+        guard let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) else {
+            statusMessage = "That clipboard item does not contain usable text yet."
+            return
+        }
+
+        selectedText = text
+        launchSource = "Clipboard History"
+        userInstruction = ""
+        preview = nil
+
+        if let actionID, availableActions.contains(where: { $0.id == actionID }) {
+            selectedActionID = actionID
+        }
+
+        activeWorkspaceMode = .selection
+        statusMessage = "Loaded \(item.kind.displayName.lowercased()) content from clipboard history."
+
+        if prepareAfterRouting {
+            preparePreview()
+        }
+    }
+
+    private func reconcileClipboardSelection() {
+        let visibleItemIDs = Set(filteredClipboardItems.map(\.id))
+        guard let selectedClipboardItemID else {
+            self.selectedClipboardItemID = filteredClipboardItems.first?.id
+            return
+        }
+
+        if !visibleItemIDs.contains(selectedClipboardItemID) {
+            self.selectedClipboardItemID = filteredClipboardItems.first?.id
+        }
+    }
+
     private func loadActions() throws -> [ActionDescriptor] {
         let actions = try runtimeBridge.availableActions(configuration: runtimeConfiguration)
         availableActions = actions
@@ -446,5 +751,21 @@ final class AppModel: ObservableObject {
         }
 
         return defaultRuntimeRootPath
+    }
+
+    private static func initialWorkspaceMode() -> WorkspaceMode {
+        guard let storedValue = UserDefaults.standard.string(forKey: workspaceModeDefaultsKey) else {
+            return .selection
+        }
+
+        return WorkspaceMode(rawValue: storedValue) ?? .selection
+    }
+
+    private static func initialClipboardHotkeyEnabled() -> Bool {
+        if UserDefaults.standard.object(forKey: clipboardHotkeyEnabledDefaultsKey) == nil {
+            return true
+        }
+
+        return UserDefaults.standard.bool(forKey: clipboardHotkeyEnabledDefaultsKey)
     }
 }

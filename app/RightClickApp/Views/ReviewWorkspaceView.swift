@@ -5,23 +5,29 @@ struct ReviewWorkspaceView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             header
-            selectedTextPanel
-            actionPanel
-            reviewPanel
-            statusPanel
+            workspacePicker
+
+            switch model.activeWorkspaceMode {
+            case .selection:
+                selectionWorkspace
+            case .clipboard:
+                clipboardWorkspace
+            }
+
+            footer
         }
         .padding(20)
-        .frame(minWidth: 680, minHeight: 520)
+        .frame(minWidth: 860, minHeight: 640)
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("RightClick AI")
                     .font(.title2.weight(.semibold))
-                Text("Native selected-text host backed by the shared action runtime.")
+                Text(model.activeWorkspaceMode.subtitle)
                     .foregroundStyle(.secondary)
             }
 
@@ -33,109 +39,325 @@ struct ReviewWorkspaceView: View {
         }
     }
 
-    private var selectedTextPanel: some View {
-        GroupBox("Selected Text") {
-            VStack(alignment: .leading, spacing: 12) {
-                ScrollView {
-                    Text(model.selectedText.isEmpty ? "No selected text captured yet." : model.selectedText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(.vertical, 4)
-                }
-                .frame(minHeight: 140)
-
-                HStack {
-                    Button("Use Clipboard") {
-                        model.importClipboardText()
-                    }
-
-                    Text("Fallback path for apps where the Services menu is unavailable or unreliable.")
-                        .foregroundStyle(.secondary)
-                }
+    private var workspacePicker: some View {
+        Picker("Workspace", selection: $model.activeWorkspaceMode) {
+            ForEach(WorkspaceMode.allCases) { mode in
+                Text(mode.title).tag(mode)
             }
         }
+        .pickerStyle(.segmented)
     }
 
-    private var actionPanel: some View {
-        GroupBox("Action Picker") {
-            VStack(alignment: .leading, spacing: 12) {
-                Picker("Action", selection: $model.selectedActionID) {
-                    ForEach(model.availableActions) { action in
-                        Text(action.title).tag(action.id)
+    private var selectionWorkspace: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GroupBox("Selected Text") {
+                VStack(alignment: .leading, spacing: 12) {
+                    ScrollView {
+                        Text(model.selectedText.isEmpty ? "No selected text captured yet." : model.selectedText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(.vertical, 4)
+                    }
+                    .frame(minHeight: 140)
+
+                    HStack {
+                        Button("Use Clipboard In Review") {
+                            model.importClipboardText()
+                        }
+
+                        Text("Fallback path for apps where Services are unavailable or unreliable.")
+                            .foregroundStyle(.secondary)
                     }
                 }
+                .padding(.vertical, 4)
+            }
 
-                Text(model.selectedAction?.subtitle ?? "Choose an action to prepare a placeholder review.")
-                    .foregroundStyle(.secondary)
+            HSplitView {
+                GroupBox("Action") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Action", selection: $model.selectedActionID) {
+                            ForEach(model.availableActions) { action in
+                                Text(action.title).tag(action.id)
+                            }
+                        }
 
-                if model.supportsUserInstruction {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(model.instructionFieldTitle)
-                            .font(.caption.weight(.semibold))
+                        Text(model.selectedAction?.subtitle ?? "Choose an action to prepare a review.")
                             .foregroundStyle(.secondary)
 
-                        TextField(model.instructionPlaceholder, text: $model.userInstruction, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
-                            .lineLimit(2...4)
+                        if model.supportsUserInstruction {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(model.instructionFieldTitle)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                TextField(model.instructionPlaceholder, text: $model.userInstruction, axis: .vertical)
+                                    .textFieldStyle(.roundedBorder)
+                                    .lineLimit(2...4)
+                            }
+                        }
+
+                        HStack {
+                            Button("Prepare Review") {
+                                model.preparePreview()
+                            }
+                            .keyboardShortcut(.defaultAction)
+
+                            Button(model.applyButtonTitle) {
+                                model.applyPreview()
+                            }
+                            .disabled(!model.canApplyPreview)
+
+                            Spacer()
+
+                            Button("Reload Actions") {
+                                model.reloadActions()
+                            }
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
+                .frame(minWidth: 300)
 
-                HStack {
-                    Button("Prepare Review") {
-                        model.preparePreview()
-                    }
-                    .keyboardShortcut(.defaultAction)
+                GroupBox("Review") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if let preview = model.preview {
+                            Text(preview.title)
+                                .font(.headline)
 
-                    Button("Reload Actions") {
-                        model.reloadActions()
-                    }
+                            Text(preview.summary)
+                                .foregroundStyle(.secondary)
 
-                    Button(model.applyButtonTitle) {
-                        model.applyPreview()
+                            Divider()
+                            previewContent(preview)
+                        } else {
+                            Text("Prepare a review to load a runtime-backed result.")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                .padding(.vertical, 8)
+                        }
                     }
-                    .disabled(!model.canApplyPreview)
+                    .padding(.vertical, 4)
                 }
+                .frame(minWidth: 420)
             }
-            .padding(.vertical, 4)
+
+            GroupBox("Available Direct Services") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("These actions are also installed directly in the Services menu so you can run them without opening this window.")
+                        .foregroundStyle(.secondary)
+
+                    FlowLayout(spacing: 10) {
+                        ForEach(model.directServiceActionTitles, id: \.self) { title in
+                            ActionChip(title: title)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 
-    private var reviewPanel: some View {
-        GroupBox("Review Surface") {
-            VStack(alignment: .leading, spacing: 10) {
-                if let preview = model.preview {
-                    Text(preview.title)
-                        .font(.headline)
+    private var clipboardWorkspace: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GroupBox {
+                HStack(spacing: 12) {
+                    TextField("Search clipboard history", text: $model.clipboardSearchQuery)
+                        .textFieldStyle(.roundedBorder)
 
-                    Text(preview.summary)
-                        .foregroundStyle(.secondary)
+                    if model.clipboardHotkeyEnabled {
+                        Label(model.clipboardHotkeyShortcutLabel, systemImage: "keyboard")
+                            .foregroundStyle(.secondary)
+                    }
 
-                    Divider()
+                    Button(model.clipboardManager.isPaused ? "Resume Capture" : "Pause Capture") {
+                        model.toggleClipboardPause()
+                    }
 
-                    previewContent(preview)
-                } else {
-                    Text("Prepare a review to load a real runtime-backed preview.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 8)
+                    Button("Clear Last") {
+                        model.clearMostRecentClipboardItem()
+                    }
+                    .disabled(model.filteredClipboardItems.isEmpty)
+
+                    Menu("More") {
+                        Button("Clear Recent") {
+                            model.clearRecentClipboardItems()
+                        }
+                        Button("Clear All") {
+                            model.clearAllClipboardItems()
+                        }
+                    }
                 }
+                .padding(.vertical, 2)
             }
-            .padding(.vertical, 4)
+
+            HSplitView {
+                GroupBox("History") {
+                    if model.filteredClipboardItems.isEmpty {
+                        ContentUnavailableView(
+                            "Clipboard history is empty",
+                            systemImage: "doc.on.clipboard",
+                            description: Text("Copy text anywhere on your Mac, then use \(model.clipboardHotkeyShortcutLabel) or this window to review it.")
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        List(selection: $model.selectedClipboardItemID) {
+                            ForEach(model.filteredClipboardItems) { item in
+                                ClipboardHistoryRow(item: item)
+                                    .tag(item.id)
+                                    .contextMenu {
+                                        Button("Use In Review") {
+                                            model.useClipboardItemInReview(item.id)
+                                        }
+
+                                        if item.canRestoreAsText {
+                                            Button("Restore To Clipboard") {
+                                                model.restoreClipboardItem(item.id)
+                                            }
+                                        }
+
+                                        Divider()
+
+                                        Button(item.isPinned ? "Unpin" : "Pin") {
+                                            model.togglePinnedClipboardItem(item.id)
+                                        }
+
+                                        Button(item.isFavorite ? "Remove Favorite" : "Favorite") {
+                                            model.toggleFavoriteClipboardItem(item.id)
+                                        }
+
+                                        Divider()
+
+                                        ForEach(model.compatibleClipboardActions(for: item), id: \.actionID) { compatibility in
+                                            if compatibility.isCompatible {
+                                                Button("Prepare \(compatibility.actionTitle)") {
+                                                    model.prepareClipboardAction(itemID: item.id, actionID: compatibility.actionID)
+                                                }
+                                            }
+                                        }
+
+                                        Divider()
+
+                                        Button("Remove From History") {
+                                            model.removeClipboardItem(item.id)
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                }
+                .frame(minWidth: 320, idealWidth: 340)
+
+                GroupBox("Selected Clipboard Item") {
+                    if let item = model.selectedClipboardItem {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Label(item.kind.displayName, systemImage: clipboardIconName(for: item.kind))
+                                        .font(.headline)
+
+                                    Spacer()
+
+                                    if item.isPinned {
+                                        ActionChip(title: "Pinned", systemImage: "pin.fill")
+                                    }
+
+                                    if item.isFavorite {
+                                        ActionChip(title: "Favorite", systemImage: "star.fill")
+                                    }
+                                }
+
+                                GroupBox("Preview") {
+                                    Text(item.text ?? item.normalizedText)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                        .padding(.vertical, 4)
+                                }
+
+                                GroupBox("Details") {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        metadataRow("Last Captured", value: ReviewWorkspaceFormatters.timestamp.string(from: item.lastCapturedAt))
+                                        metadataRow("Captured", value: ReviewWorkspaceFormatters.timestamp.string(from: item.capturedAt))
+                                        metadataRow("Source", value: item.sourceName ?? "Unknown")
+                                        if let bundleIdentifier = item.sourceBundleIdentifier {
+                                            metadataRow("Bundle ID", value: bundleIdentifier)
+                                        }
+                                        metadataRow("Captures", value: "\(item.captureCount)")
+                                        metadataRow("Restores", value: "\(item.restoreCount)")
+                                    }
+                                    .padding(.vertical, 4)
+                                }
+
+                                HStack {
+                                    Button("Use In Review") {
+                                        model.useSelectedClipboardItemInReview()
+                                    }
+                                    .disabled(!model.canUseSelectedClipboardItemInReview)
+
+                                    Button("Restore To Clipboard") {
+                                        model.restoreSelectedClipboardItem()
+                                    }
+                                    .disabled(!model.canRestoreSelectedClipboardItem)
+
+                                    Spacer()
+
+                                    Button(item.isPinned ? "Unpin" : "Pin") {
+                                        model.togglePinnedClipboardItem(item.id)
+                                    }
+
+                                    Button(item.isFavorite ? "Remove Favorite" : "Favorite") {
+                                        model.toggleFavoriteClipboardItem(item.id)
+                                    }
+                                }
+
+                                GroupBox("Run An Action") {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        let compatibleActions = model.selectedClipboardCompatibilities.filter { $0.isCompatible }
+                                        if compatibleActions.isEmpty {
+                                            Text("No installed text actions are available for this clipboard item yet.")
+                                                .foregroundStyle(.secondary)
+                                        } else {
+                                            ForEach(compatibleActions, id: \.actionID) { compatibility in
+                                                Button("Prepare \(compatibility.actionTitle)") {
+                                                    model.prepareClipboardAction(compatibility.actionID)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 4)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
+                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No clipboard item selected",
+                            systemImage: "doc.on.clipboard",
+                            description: Text("Choose an item from the history list to preview it, restore it, or run an action.")
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(minWidth: 440)
+            }
         }
     }
 
-    private var statusPanel: some View {
-        GroupBox("Session State") {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Source: \(model.launchSource)")
-                Text("Runtime: \(model.runtimeExecutablePath)")
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-                Text(model.statusMessage)
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(model.activeWorkspaceMode == .clipboard ? model.clipboardStatusMessage : model.statusMessage)
+                .foregroundStyle(.secondary)
+
+            if model.activeWorkspaceMode == .clipboard {
+                Text(model.clipboardStateSummary)
                     .foregroundStyle(.secondary)
+                    .font(.caption)
+            } else {
+                Text("Direct Services stay fastest for repeat use. This window is best for guided review and the clipboard fallback.")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
         }
     }
 
@@ -149,7 +371,7 @@ struct ReviewWorkspaceView: View {
                     .textSelection(.enabled)
                     .padding(.vertical, 4)
             }
-            .frame(minHeight: 140)
+            .frame(minHeight: 180)
         case let .rewriteDiff(original, rewritten):
             VStack(alignment: .leading, spacing: 12) {
                 GroupBox("Original") {
@@ -159,7 +381,7 @@ struct ReviewWorkspaceView: View {
                             .textSelection(.enabled)
                             .padding(.vertical, 4)
                     }
-                    .frame(minHeight: 100)
+                    .frame(minHeight: 120)
                 }
 
                 GroupBox("Rewritten") {
@@ -169,7 +391,7 @@ struct ReviewWorkspaceView: View {
                             .textSelection(.enabled)
                             .padding(.vertical, 4)
                     }
-                    .frame(minHeight: 100)
+                    .frame(minHeight: 120)
                 }
             }
         case let .eventDrafts(reason, events):
@@ -205,10 +427,10 @@ struct ReviewWorkspaceView: View {
                             }
                         }
                     }
-                    .frame(minHeight: 140)
+                    .frame(minHeight: 180)
                 }
 
-                DisclosureGroup("Raw Runtime Output") {
+                DisclosureGroup("Technical Details") {
                     Text(preview.proposedOutput)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .font(.caption.monospaced())
@@ -216,6 +438,17 @@ struct ReviewWorkspaceView: View {
                         .padding(.top, 4)
                 }
             }
+        }
+    }
+
+    private func metadataRow(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
         }
     }
 
@@ -229,4 +462,103 @@ struct ReviewWorkspaceView: View {
                 .textSelection(.enabled)
         }
     }
+
+    private func clipboardIconName(for kind: ClipboardItemKind) -> String {
+        switch kind {
+        case .text:
+            return "doc.text"
+        case .url:
+            return "link"
+        case .fileURL:
+            return "doc"
+        case .image:
+            return "photo"
+        case .screenshot:
+            return "camera.viewfinder"
+        case .unknown:
+            return "doc.on.clipboard"
+        }
+    }
+}
+
+private struct ClipboardHistoryRow: View {
+    let item: ClipboardItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top) {
+                Text(item.previewText)
+                    .font(.body)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if item.isPinned {
+                    Image(systemName: "pin.fill")
+                        .foregroundStyle(.secondary)
+                } else if item.isFavorite {
+                    Image(systemName: "star.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text(item.kind.displayName)
+                if let sourceName = item.sourceName {
+                    Text(sourceName)
+                }
+                Text(ReviewWorkspaceFormatters.relative.localizedString(for: item.lastCapturedAt, relativeTo: .now))
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private struct ActionChip: View {
+    let title: String
+    var systemImage: String? = nil
+
+    var body: some View {
+        Label {
+            Text(title)
+                .font(.caption.weight(.semibold))
+        } icon: {
+            if let systemImage {
+                Image(systemName: systemImage)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(Capsule())
+    }
+}
+
+private struct FlowLayout<Content: View>: View {
+    let spacing: CGFloat
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .top, spacing: spacing) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+@MainActor
+private enum ReviewWorkspaceFormatters {
+    static let timestamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static let relative: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
 }

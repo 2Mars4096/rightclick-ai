@@ -276,6 +276,32 @@ final class ClipboardManager: ObservableObject {
         return removedItems
     }
 
+    @discardableResult
+    func clearMostRecent() -> ClipboardItem? {
+        guard let itemToRemove = items.max(by: { $0.lastCapturedAt < $1.lastCapturedAt }) else {
+            lastErrorMessage = nil
+            statusMessage = "Clipboard history was already empty."
+            return nil
+        }
+
+        return remove(itemID: itemToRemove.id, reason: "Removed the most recent clipboard item.")
+    }
+
+    @discardableResult
+    func remove(itemID: ClipboardItem.ID, reason: String? = nil) -> ClipboardItem? {
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else {
+            lastErrorMessage = "Clipboard item was not found."
+            statusMessage = lastErrorMessage ?? "Clipboard item was not found."
+            return nil
+        }
+
+        let removedItem = items.remove(at: index)
+        persistHistory()
+        lastErrorMessage = nil
+        statusMessage = reason ?? "Removed a clipboard item from history."
+        return removedItem
+    }
+
     func compatibility(for action: ActionDescriptor, itemID: ClipboardItem.ID) -> ClipboardActionCompatibility? {
         guard let item = item(withID: itemID) else {
             return nil
@@ -303,7 +329,11 @@ final class ClipboardManager: ObservableObject {
             return
         }
 
-        _ = captureCurrentPasteboard()
+        let frontmostApplication = NSWorkspace.shared.frontmostApplication
+        _ = captureCurrentPasteboard(
+            sourceName: frontmostApplication?.localizedName,
+            sourceBundleIdentifier: frontmostApplication?.bundleIdentifier
+        )
     }
 
     private func ingestCapturedItem(_ candidate: ClipboardItem, sourceLabel: String) -> ClipboardItem? {
