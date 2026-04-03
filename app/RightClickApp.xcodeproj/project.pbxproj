@@ -15,6 +15,11 @@
 		A00000000000000000000035 /* RuntimeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000025 /* RuntimeBridge.swift */; };
 		A00000000000000000000036 /* ReviewWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000026 /* ReviewWorkspaceView.swift */; };
 		A00000000000000000000037 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000027 /* SettingsView.swift */; };
+		A00000000000000000000038 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000029 /* ClipboardItem.swift */; };
+		A00000000000000000000039 /* ClipboardPrivacyPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002A /* ClipboardPrivacyPolicy.swift */; };
+		A0000000000000000000003A /* ClipboardHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002B /* ClipboardHistoryStore.swift */; };
+		A0000000000000000000003B /* ClipboardActionCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002C /* ClipboardActionCompatibility.swift */; };
+		A0000000000000000000003C /* ClipboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002D /* ClipboardManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +33,11 @@
 		A00000000000000000000026 /* ReviewWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWorkspaceView.swift; sourceTree = "<group>"; };
 		A00000000000000000000027 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		A00000000000000000000028 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A00000000000000000000029 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
+		A0000000000000000000002A /* ClipboardPrivacyPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardPrivacyPolicy.swift; sourceTree = "<group>"; };
+		A0000000000000000000002B /* ClipboardHistoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardHistoryStore.swift; sourceTree = "<group>"; };
+		A0000000000000000000002C /* ClipboardActionCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardActionCompatibility.swift; sourceTree = "<group>"; };
+		A0000000000000000000002D /* ClipboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,10 +76,23 @@
 				A00000000000000000000023 /* SelectedTextServiceProvider.swift */,
 				A00000000000000000000024 /* ReviewWindowController.swift */,
 				A00000000000000000000025 /* RuntimeBridge.swift */,
+				A00000000000000000000007 /* Clipboard */,
 				A00000000000000000000005 /* Views */,
 				A00000000000000000000006 /* Resources */,
 			);
 			path = RightClickApp;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000007 /* Clipboard */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000029 /* ClipboardItem.swift */,
+				A0000000000000000000002A /* ClipboardPrivacyPolicy.swift */,
+				A0000000000000000000002B /* ClipboardHistoryStore.swift */,
+				A0000000000000000000002C /* ClipboardActionCompatibility.swift */,
+				A0000000000000000000002D /* ClipboardManager.swift */,
+			);
+			path = Clipboard;
 			sourceTree = "<group>";
 		};
 		A00000000000000000000005 /* Views */ = {
@@ -165,6 +188,11 @@
 				A00000000000000000000035 /* RuntimeBridge.swift in Sources */,
 				A00000000000000000000036 /* ReviewWorkspaceView.swift in Sources */,
 				A00000000000000000000037 /* SettingsView.swift in Sources */,
+				A00000000000000000000038 /* ClipboardItem.swift in Sources */,
+				A00000000000000000000039 /* ClipboardPrivacyPolicy.swift in Sources */,
+				A0000000000000000000003A /* ClipboardHistoryStore.swift in Sources */,
+				A0000000000000000000003B /* ClipboardActionCompatibility.swift in Sources */,
+				A0000000000000000000003C /* ClipboardManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,0 +1,144 @@
+import Foundation
+
+struct ClipboardHistoryStore: Codable, Hashable {
+    struct RetentionPolicy: Codable, Hashable {
+        var maximumItemCount: Int
+        var maximumAge: TimeInterval?
+        var preserveProtectedItems: Bool
+
+        init(
+            maximumItemCount: Int = 250,
+            maximumAge: TimeInterval? = 60 * 60 * 24 * 30,
+            preserveProtectedItems: Bool = true
+        ) {
+            self.maximumItemCount = maximumItemCount
+            self.maximumAge = maximumAge
+            self.preserveProtectedItems = preserveProtectedItems
+        }
+
+        static let standard = RetentionPolicy()
+    }
+
+    let fileURL: URL
+    var retentionPolicy: RetentionPolicy
+
+    init(
+        fileURL: URL = Self.defaultFileURL(),
+        retentionPolicy: RetentionPolicy = .standard
+    ) {
+        self.fileURL = fileURL
+        self.retentionPolicy = retentionPolicy
+    }
+
+    static func defaultFileURL() -> URL {
+        let fileManager = FileManager.default
+        let supportDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support", isDirectory: true)
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "RightClickApp"
+
+        return supportDirectory
+            .appendingPathComponent(bundleIdentifier, isDirectory: true)
+            .appendingPathComponent("clipboard-history.json", isDirectory: false)
+    }
+
+    func load() throws -> [ClipboardItem] {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            return []
+        }
+
+        let data = try Data(contentsOf: fileURL)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let snapshot = try decoder.decode(ClipboardHistorySnapshot.self, from: data)
+        return snapshot.items
+    }
+
+    func save(_ items: [ClipboardItem]) throws {
+        let snapshot = ClipboardHistorySnapshot(
+            schemaVersion: 1,
+            savedAt: .now,
+            items: items
+        )
+
+        let directoryURL = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+
+        let data = try encoder.encode(snapshot)
+        try data.write(to: fileURL, options: .atomic)
+    }
+
+    func deduplicated(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        let merged = items.reduce(into: [String: ClipboardItem]()) { partialResult, item in
+            let key = item.dedupeKey
+            if let existing = partialResult[key] {
+                partialResult[key] = existing.merged(with: item)
+            } else {
+                partialResult[key] = item
+            }
+        }
+
+        return merged.values.sorted(by: ClipboardItem.sortBefore)
+    }
+
+    func pruned(_ items: [ClipboardItem], now: Date = .now) -> [ClipboardItem] {
+        let deduplicatedItems = deduplicated(items)
+        let ageLimitedItems = pruneByAge(deduplicatedItems, now: now)
+        return pruneByCount(ageLimitedItems)
+    }
+
+    func deduplicatedAndPruned(_ items: [ClipboardItem], now: Date = .now) -> [ClipboardItem] {
+        pruned(items, now: now)
+    }
+
+    private func pruneByAge(_ items: [ClipboardItem], now: Date) -> [ClipboardItem] {
+        guard let maximumAge = retentionPolicy.maximumAge, maximumAge > 0 else {
+            return items
+        }
+
+        let cutoff = now.addingTimeInterval(-maximumAge)
+        return items.filter { item in
+            if retentionPolicy.preserveProtectedItems, item.isProtected {
+                return true
+            }
+
+            return item.lastActivityAt >= cutoff
+        }
+    }
+
+    private func pruneByCount(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        let maximumItemCount = max(1, retentionPolicy.maximumItemCount)
+        guard items.count > maximumItemCount else {
+            return items
+        }
+
+        guard retentionPolicy.preserveProtectedItems else {
+            return Array(items.prefix(maximumItemCount))
+        }
+
+        var prunedItems = items
+        var index = prunedItems.count - 1
+
+        while prunedItems.count > maximumItemCount, index >= 0 {
+            if prunedItems[index].isProtected {
+                index -= 1
+                continue
+            }
+
+            prunedItems.remove(at: index)
+            index -= 1
+        }
+
+        return prunedItems.sorted(by: ClipboardItem.sortBefore)
+    }
+}
+
+private struct ClipboardHistorySnapshot: Codable {
+    var schemaVersion: Int
+    var savedAt: Date
+    var items: [ClipboardItem]
+}
