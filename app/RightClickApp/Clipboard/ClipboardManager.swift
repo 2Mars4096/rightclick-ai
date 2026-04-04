@@ -46,7 +46,7 @@ final class ClipboardManager: ObservableObject {
     }
 
     var restoreableItems: [ClipboardItem] {
-        items.filter { $0.canRestoreAsText }
+        items.filter { $0.canRestore }
     }
 
     func startMonitoring() {
@@ -135,28 +135,18 @@ final class ClipboardManager: ObservableObject {
 
     @discardableResult
     func capture(text: String, kind: ClipboardItemKind = .text, sourceName: String? = nil, sourceBundleIdentifier: String? = nil, sourceWindowTitle: String? = nil, isSensitiveSource: Bool = false) -> ClipboardItem? {
-        guard !kind.isDeferredVisual else {
-            lastErrorMessage = nil
-            statusMessage = "\(kind.displayName) clipboard items are deferred for a later fast-follow."
-            return nil
-        }
-
         guard ClipboardTextNormalization.hasMeaningfulContent(text) else {
             lastErrorMessage = nil
             statusMessage = "Clipboard text was empty."
             return nil
         }
 
-        let privacyDecision = privacyPolicy.decision(
-            for: sourceName,
+        guard allowCapture(
+            sourceName: sourceName,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceWindowTitle: sourceWindowTitle,
             isSensitiveSource: isSensitiveSource
-        )
-
-        guard privacyDecision.allowsCapture else {
-            lastErrorMessage = nil
-            statusMessage = privacyDecision.reason ?? "Clipboard capture was suppressed."
+        ) else {
             return nil
         }
 
@@ -178,7 +168,11 @@ final class ClipboardManager: ObservableObject {
         sourceWindowTitle: String? = nil,
         isSensitiveSource: Bool = false
     ) -> ClipboardItem? {
-        let snapshot = snapshot(from: pasteboard)
+        let snapshot = snapshot(
+            from: pasteboard,
+            sourceName: sourceName,
+            sourceBundleIdentifier: sourceBundleIdentifier
+        )
         lastObservedPasteboardChangeCount = pasteboard.changeCount
 
         switch snapshot {
@@ -191,13 +185,21 @@ final class ClipboardManager: ObservableObject {
                 sourceWindowTitle: sourceWindowTitle,
                 isSensitiveSource: isSensitiveSource
             )
-        case let .deferred(kind):
-            lastErrorMessage = nil
-            statusMessage = "\(kind.displayName) clipboard items are deferred for a later fast-follow."
-            return nil
+        case let .visual(kind, data, byteCount, pixelWidth, pixelHeight):
+            return captureVisual(
+                data: data,
+                kind: kind,
+                byteCount: byteCount,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+                sourceName: sourceName,
+                sourceBundleIdentifier: sourceBundleIdentifier,
+                sourceWindowTitle: sourceWindowTitle,
+                isSensitiveSource: isSensitiveSource
+            )
         case .unsupported:
             lastErrorMessage = nil
-            statusMessage = "The clipboard does not contain text yet."
+            statusMessage = "The clipboard does not contain supported content yet."
             return nil
         }
     }
@@ -211,14 +213,45 @@ final class ClipboardManager: ObservableObject {
         }
 
         let item = items[index]
-        guard let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) else {
+        if item.kind.isTextual {
+            guard let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) else {
+                lastErrorMessage = nil
+                statusMessage = "\(item.kind.displayName) clipboard items cannot be restored yet."
+                return nil
+            }
+
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+            lastObservedPasteboardChangeCount = pasteboard.changeCount
+
+            let restoredItem = recordRestore(on: item)
+            items[index] = restoredItem
+            reconcileAndPersistHistory()
+
             lastErrorMessage = nil
-            statusMessage = "\(item.kind.displayName) clipboard items cannot be restored yet."
+            statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
+            return restoredItem
+        }
+
+        guard let assetURL = historyStore.resolvedAssetURL(for: item),
+              let assetData = try? Data(contentsOf: assetURL) else {
+            lastErrorMessage = nil
+            statusMessage = "\(item.kind.displayName) clipboard data is unavailable."
             return nil
         }
 
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        var didRestore = pasteboard.setData(assetData, forType: .png)
+        if !didRestore, let image = NSImage(data: assetData) {
+            didRestore = pasteboard.writeObjects([image])
+        }
+
+        guard didRestore else {
+            lastErrorMessage = nil
+            statusMessage = "Could not restore \(item.kind.displayName.lowercased()) content to the clipboard."
+            return nil
+        }
+
         lastObservedPasteboardChangeCount = pasteboard.changeCount
 
         let restoredItem = recordRestore(on: item)
@@ -228,6 +261,15 @@ final class ClipboardManager: ObservableObject {
         lastErrorMessage = nil
         statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
         return restoredItem
+    }
+
+    func previewImage(for itemID: ClipboardItem.ID) -> NSImage? {
+        guard let item = item(withID: itemID),
+              let assetURL = historyStore.resolvedAssetURL(for: item) else {
+            return nil
+        }
+
+        return NSImage(contentsOf: assetURL)
     }
 
     @discardableResult
@@ -396,11 +438,15 @@ final class ClipboardManager: ObservableObject {
 
     private enum ClipboardSnapshot {
         case text(kind: ClipboardItemKind, text: String)
-        case deferred(kind: ClipboardItemKind)
+        case visual(kind: ClipboardItemKind, data: Data, byteCount: Int, pixelWidth: Int?, pixelHeight: Int?)
         case unsupported
     }
 
-    private func snapshot(from pasteboard: NSPasteboard) -> ClipboardSnapshot {
+    private func snapshot(
+        from pasteboard: NSPasteboard,
+        sourceName: String?,
+        sourceBundleIdentifier: String?
+    ) -> ClipboardSnapshot {
         if let string = pasteboard.string(forType: .string),
            ClipboardTextNormalization.hasMeaningfulContent(string) {
             return .text(kind: .text, text: string)
@@ -414,24 +460,161 @@ final class ClipboardManager: ObservableObject {
             return .text(kind: kind, text: text)
         }
 
-        if hasImageLikeContents(in: pasteboard) {
-            return .deferred(kind: .image)
+        if let visualSnapshot = visualSnapshot(
+            from: pasteboard,
+            sourceName: sourceName,
+            sourceBundleIdentifier: sourceBundleIdentifier
+        ) {
+            return visualSnapshot
         }
 
         return .unsupported
     }
 
-    private func hasImageLikeContents(in pasteboard: NSPasteboard) -> Bool {
-        guard let types = pasteboard.types else {
+    private func allowCapture(
+        sourceName: String?,
+        sourceBundleIdentifier: String?,
+        sourceWindowTitle: String?,
+        isSensitiveSource: Bool
+    ) -> Bool {
+        let privacyDecision = privacyPolicy.decision(
+            for: sourceName,
+            sourceBundleIdentifier: sourceBundleIdentifier,
+            sourceWindowTitle: sourceWindowTitle,
+            isSensitiveSource: isSensitiveSource
+        )
+
+        guard privacyDecision.allowsCapture else {
+            lastErrorMessage = nil
+            statusMessage = privacyDecision.reason ?? "Clipboard capture was suppressed."
             return false
         }
 
-        return types.contains { type in
-            guard let utType = UTType(type.rawValue) else {
-                return false
-            }
+        return true
+    }
 
-            return utType.conforms(to: .image)
+    @discardableResult
+    private func captureVisual(
+        data: Data,
+        kind: ClipboardItemKind,
+        byteCount: Int,
+        pixelWidth: Int?,
+        pixelHeight: Int?,
+        sourceName: String?,
+        sourceBundleIdentifier: String?,
+        sourceWindowTitle: String?,
+        isSensitiveSource: Bool
+    ) -> ClipboardItem? {
+        guard allowCapture(
+            sourceName: sourceName,
+            sourceBundleIdentifier: sourceBundleIdentifier,
+            sourceWindowTitle: sourceWindowTitle,
+            isSensitiveSource: isSensitiveSource
+        ) else {
+            return nil
         }
+
+        let itemID = UUID()
+
+        do {
+            let assetRelativePath = try historyStore.saveVisualAsset(data: data, itemID: itemID)
+            let candidate = ClipboardItem(
+                id: itemID,
+                kind: kind,
+                text: nil,
+                assetFingerprint: ClipboardTextNormalization.stableFingerprint(for: data),
+                assetRelativePath: assetRelativePath,
+                assetByteCount: byteCount,
+                pixelWidth: pixelWidth,
+                pixelHeight: pixelHeight,
+                sourceName: sourceName,
+                sourceBundleIdentifier: sourceBundleIdentifier,
+                sourceWindowTitle: sourceWindowTitle
+            )
+
+            return ingestCapturedItem(candidate, sourceLabel: sourceName ?? kind.displayName)
+        } catch {
+            lastErrorMessage = error.localizedDescription
+            statusMessage = "Could not store \(kind.displayName.lowercased()) clipboard data."
+            return nil
+        }
+    }
+
+    private func visualSnapshot(
+        from pasteboard: NSPasteboard,
+        sourceName: String?,
+        sourceBundleIdentifier: String?
+    ) -> ClipboardSnapshot? {
+        guard let imageData = bestVisualData(from: pasteboard),
+              let image = NSImage(data: imageData) else {
+            return nil
+        }
+
+        let kind = visualKind(sourceName: sourceName, sourceBundleIdentifier: sourceBundleIdentifier)
+        let imageSize = pixelSize(for: image)
+
+        return .visual(
+            kind: kind,
+            data: imageData,
+            byteCount: imageData.count,
+            pixelWidth: imageSize?.width,
+            pixelHeight: imageSize?.height
+        )
+    }
+
+    private func bestVisualData(from pasteboard: NSPasteboard) -> Data? {
+        if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+            return pngData
+        }
+
+        if let tiffData = pasteboard.data(forType: .tiff),
+           let image = NSImage(data: tiffData),
+           let pngData = pngData(for: image) {
+            return pngData
+        }
+
+        if let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+           let image = images.first,
+           let pngData = pngData(for: image) {
+            return pngData
+        }
+
+        return nil
+    }
+
+    private func pngData(for image: NSImage) -> Data? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRepresentation = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+
+        return bitmapRepresentation.representation(using: .png, properties: [:])
+    }
+
+    private func pixelSize(for image: NSImage) -> (width: Int, height: Int)? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapRepresentation = NSBitmapImageRep(data: tiffData) else {
+            return nil
+        }
+
+        let width = bitmapRepresentation.pixelsWide
+        let height = bitmapRepresentation.pixelsHigh
+        guard width > 0, height > 0 else {
+            return nil
+        }
+
+        return (width, height)
+    }
+
+    private func visualKind(sourceName: String?, sourceBundleIdentifier: String?) -> ClipboardItemKind {
+        if sourceBundleIdentifier == "com.apple.screencaptureui" {
+            return .screenshot
+        }
+
+        if sourceName?.localizedCaseInsensitiveContains("screenshot") == true {
+            return .screenshot
+        }
+
+        return .image
     }
 }

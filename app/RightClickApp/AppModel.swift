@@ -236,7 +236,7 @@ final class AppModel: ObservableObject {
     }
 
     var canRestoreSelectedClipboardItem: Bool {
-        selectedClipboardItem?.canRestoreAsText == true
+        selectedClipboardItem?.canRestore == true
     }
 
     var needsProviderSetup: Bool {
@@ -499,6 +499,10 @@ final class AppModel: ObservableObject {
 
     func compatibleClipboardActions(for item: ClipboardItem) -> [ClipboardActionCompatibility] {
         clipboardManager.compatibilities(for: availableActions, itemID: item.id)
+    }
+
+    func previewImage(for item: ClipboardItem) -> NSImage? {
+        clipboardManager.previewImage(for: item.id)
     }
 
     private var normalizedUserInstruction: String? {

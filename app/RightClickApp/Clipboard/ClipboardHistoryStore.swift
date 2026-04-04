@@ -30,6 +30,14 @@ struct ClipboardHistoryStore: Codable, Hashable {
         self.retentionPolicy = retentionPolicy
     }
 
+    var rootDirectoryURL: URL {
+        fileURL.deletingLastPathComponent()
+    }
+
+    var assetsDirectoryURL: URL {
+        rootDirectoryURL.appendingPathComponent("clipboard-assets", isDirectory: true)
+    }
+
     static func defaultFileURL() -> URL {
         let fileManager = FileManager.default
         let supportDirectory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -61,7 +69,7 @@ struct ClipboardHistoryStore: Codable, Hashable {
             items: items
         )
 
-        let directoryURL = fileURL.deletingLastPathComponent()
+        let directoryURL = rootDirectoryURL
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
 
         let encoder = JSONEncoder()
@@ -70,6 +78,23 @@ struct ClipboardHistoryStore: Codable, Hashable {
 
         let data = try encoder.encode(snapshot)
         try data.write(to: fileURL, options: .atomic)
+        try pruneUnreferencedAssets(referencedRelativePaths: Set(items.compactMap(\.assetRelativePath)))
+    }
+
+    func saveVisualAsset(data: Data, itemID: UUID, fileExtension: String = "png") throws -> String {
+        try FileManager.default.createDirectory(at: assetsDirectoryURL, withIntermediateDirectories: true)
+        let filename = "\(itemID.uuidString.lowercased()).\(fileExtension)"
+        let assetURL = assetsDirectoryURL.appendingPathComponent(filename, isDirectory: false)
+        try data.write(to: assetURL, options: .atomic)
+        return "clipboard-assets/\(filename)"
+    }
+
+    func resolvedAssetURL(for item: ClipboardItem) -> URL? {
+        guard let assetRelativePath = item.assetRelativePath else {
+            return nil
+        }
+
+        return rootDirectoryURL.appendingPathComponent(assetRelativePath, isDirectory: false)
     }
 
     func deduplicated(_ items: [ClipboardItem]) -> [ClipboardItem] {
@@ -87,7 +112,8 @@ struct ClipboardHistoryStore: Codable, Hashable {
 
     func pruned(_ items: [ClipboardItem], now: Date = .now) -> [ClipboardItem] {
         let deduplicatedItems = deduplicated(items)
-        let ageLimitedItems = pruneByAge(deduplicatedItems, now: now)
+        let availableItems = pruneMissingAssets(deduplicatedItems)
+        let ageLimitedItems = pruneByAge(availableItems, now: now)
         return pruneByCount(ageLimitedItems)
     }
 
@@ -134,6 +160,38 @@ struct ClipboardHistoryStore: Codable, Hashable {
         }
 
         return prunedItems.sorted(by: ClipboardItem.sortBefore)
+    }
+
+    private func pruneMissingAssets(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        items.filter { item in
+            guard item.kind.isDeferredVisual else {
+                return true
+            }
+
+            guard let assetURL = resolvedAssetURL(for: item) else {
+                return false
+            }
+
+            return FileManager.default.fileExists(atPath: assetURL.path)
+        }
+    }
+
+    private func pruneUnreferencedAssets(referencedRelativePaths: Set<String>) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: assetsDirectoryURL.path) else {
+            return
+        }
+
+        let assetFiles = try fileManager.contentsOfDirectory(at: assetsDirectoryURL, includingPropertiesForKeys: nil)
+        let referencedAssetNames = Set(
+            referencedRelativePaths.compactMap { relativePath in
+                URL(fileURLWithPath: relativePath).lastPathComponent
+            }
+        )
+
+        for assetFile in assetFiles where !referencedAssetNames.contains(assetFile.lastPathComponent) {
+            try? fileManager.removeItem(at: assetFile)
+        }
     }
 }
 

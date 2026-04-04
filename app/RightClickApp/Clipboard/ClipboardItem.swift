@@ -69,6 +69,11 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
     let kind: ClipboardItemKind
     let text: String?
     let normalizedText: String
+    let assetFingerprint: String?
+    let assetRelativePath: String?
+    let assetByteCount: Int?
+    let pixelWidth: Int?
+    let pixelHeight: Int?
     let capturedAt: Date
     var lastCapturedAt: Date
     var lastAccessedAt: Date?
@@ -85,6 +90,11 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
         id: UUID = UUID(),
         kind: ClipboardItemKind = .text,
         text: String?,
+        assetFingerprint: String? = nil,
+        assetRelativePath: String? = nil,
+        assetByteCount: Int? = nil,
+        pixelWidth: Int? = nil,
+        pixelHeight: Int? = nil,
         sourceName: String? = nil,
         sourceBundleIdentifier: String? = nil,
         sourceWindowTitle: String? = nil,
@@ -101,6 +111,11 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
         self.kind = kind
         self.text = text
         self.normalizedText = ClipboardTextNormalization.normalizeText(text ?? "")
+        self.assetFingerprint = ClipboardTextNormalization.normalizeMetadata(assetFingerprint)
+        self.assetRelativePath = ClipboardTextNormalization.normalizeMetadata(assetRelativePath)
+        self.assetByteCount = assetByteCount
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
         self.capturedAt = capturedAt
         self.lastCapturedAt = lastCapturedAt ?? capturedAt
         self.lastAccessedAt = lastAccessedAt
@@ -135,6 +150,14 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
         lastRestoredAt ?? lastAccessedAt ?? lastCapturedAt
     }
 
+    var canRestore: Bool {
+        if kind.isTextual {
+            return canRestoreAsText
+        }
+
+        return assetRelativePath != nil
+    }
+
     var canRestoreAsText: Bool {
         guard kind.isTextual else {
             return false
@@ -149,18 +172,34 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
 
     var dedupeKey: String {
         if kind.isDeferredVisual {
-            return "visual:\(kind.rawValue):\(normalizedText)"
+            return "visual:\(kind.rawValue):\(assetFingerprint ?? id.uuidString)"
         }
 
         return "text:\(normalizedText)"
     }
 
     var previewText: String {
+        if kind.isDeferredVisual {
+            if let dimensionsDescription {
+                return "\(kind.displayName) • \(dimensionsDescription)"
+            }
+
+            return kind.displayName
+        }
+
         guard let text, ClipboardTextNormalization.hasMeaningfulContent(text) else {
             return kind.displayName
         }
 
         return ClipboardTextNormalization.previewText(for: text)
+    }
+
+    var dimensionsDescription: String? {
+        guard let pixelWidth, let pixelHeight, pixelWidth > 0, pixelHeight > 0 else {
+            return nil
+        }
+
+        return "\(pixelWidth) × \(pixelHeight)"
     }
 
     var searchableText: String {
@@ -169,6 +208,8 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
                 kind.displayName,
                 text,
                 normalizedText,
+                assetRelativePath,
+                dimensionsDescription,
                 sourceName,
                 sourceBundleIdentifier,
                 sourceWindowTitle,
@@ -187,6 +228,11 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
             id: id,
             kind: kind.merged(preferredBy: other.kind),
             text: other.text ?? text,
+            assetFingerprint: other.assetFingerprint ?? assetFingerprint,
+            assetRelativePath: other.assetRelativePath ?? assetRelativePath,
+            assetByteCount: other.assetByteCount ?? assetByteCount,
+            pixelWidth: other.pixelWidth ?? pixelWidth,
+            pixelHeight: other.pixelHeight ?? pixelHeight,
             sourceName: other.sourceName ?? sourceName,
             sourceBundleIdentifier: other.sourceBundleIdentifier ?? sourceBundleIdentifier,
             sourceWindowTitle: other.sourceWindowTitle ?? sourceWindowTitle,
@@ -293,6 +339,11 @@ enum ClipboardTextNormalization {
 
     static func stableFingerprint(for value: String) -> String {
         let hash = SHA256.hash(data: Data(value.utf8))
+        return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func stableFingerprint(for data: Data) -> String {
+        let hash = SHA256.hash(data: data)
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 }

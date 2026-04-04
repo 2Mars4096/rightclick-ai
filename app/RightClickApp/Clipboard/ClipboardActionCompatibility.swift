@@ -30,7 +30,7 @@ struct ClipboardActionCompatibility: Codable, Hashable {
                 itemID: item.id,
                 itemKind: item.kind,
                 status: .deferred,
-                reason: "Image and screenshot clipboard items are deferred for a later fast-follow."
+                reason: "Visual clipboard items can already be previewed and restored, but AI actions are still text-only."
             )
         }
 

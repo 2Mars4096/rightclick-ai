@@ -196,7 +196,7 @@ struct ReviewWorkspaceView: View {
                         ContentUnavailableView(
                             "Clipboard history is empty",
                             systemImage: "doc.on.clipboard",
-                            description: Text("Copy text anywhere on your Mac, then use \(model.clipboardHotkeyShortcutLabel) or this window to review it.")
+                            description: Text("Copy text or images anywhere on your Mac, then use \(model.clipboardHotkeyShortcutLabel) or this window to review it.")
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
@@ -205,11 +205,13 @@ struct ReviewWorkspaceView: View {
                                 ClipboardHistoryRow(item: item)
                                     .tag(item.id)
                                     .contextMenu {
-                                        Button("Use In Review") {
-                                            model.useClipboardItemInReview(item.id)
+                                        if item.canRestoreAsText {
+                                            Button("Use In Review") {
+                                                model.useClipboardItemInReview(item.id)
+                                            }
                                         }
 
-                                        if item.canRestoreAsText {
+                                        if item.canRestore {
                                             Button("Restore To Clipboard") {
                                                 model.restoreClipboardItem(item.id)
                                             }
@@ -267,10 +269,7 @@ struct ReviewWorkspaceView: View {
                                 }
 
                                 GroupBox("Preview") {
-                                    Text(item.text ?? item.normalizedText)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .textSelection(.enabled)
-                                        .padding(.vertical, 4)
+                                    clipboardPreview(for: item)
                                 }
 
                                 GroupBox("Details") {
@@ -278,6 +277,12 @@ struct ReviewWorkspaceView: View {
                                         metadataRow("Last Captured", value: ReviewWorkspaceFormatters.timestamp.string(from: item.lastCapturedAt))
                                         metadataRow("Captured", value: ReviewWorkspaceFormatters.timestamp.string(from: item.capturedAt))
                                         metadataRow("Source", value: item.sourceName ?? "Unknown")
+                                        if let dimensions = item.dimensionsDescription {
+                                            metadataRow("Dimensions", value: dimensions)
+                                        }
+                                        if let assetByteCount = item.assetByteCount {
+                                            metadataRow("Size", value: ByteCountFormatter.string(fromByteCount: Int64(assetByteCount), countStyle: .file))
+                                        }
                                         if let bundleIdentifier = item.sourceBundleIdentifier {
                                             metadataRow("Bundle ID", value: bundleIdentifier)
                                         }
@@ -313,7 +318,9 @@ struct ReviewWorkspaceView: View {
                                     VStack(alignment: .leading, spacing: 8) {
                                         let compatibleActions = model.selectedClipboardCompatibilities.filter { $0.isCompatible }
                                         if compatibleActions.isEmpty {
-                                            Text("No installed text actions are available for this clipboard item yet.")
+                                            Text(item.kind.isDeferredVisual
+                                                ? "This clipboard item can already be previewed and restored, but AI actions still expect text."
+                                                : "No installed text actions are available for this clipboard item yet.")
                                                 .foregroundStyle(.secondary)
                                         } else {
                                             ForEach(compatibleActions, id: \.actionID) { compatibility in
@@ -341,6 +348,27 @@ struct ReviewWorkspaceView: View {
                 }
                 .frame(minWidth: 440)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func clipboardPreview(for item: ClipboardItem) -> some View {
+        if item.kind.isDeferredVisual, let image = model.previewImage(for: item) {
+            GeometryReader { proxy in
+                let width = max(proxy.size.width - 20, 240)
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: width, minHeight: 180, maxHeight: 320)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            }
+            .frame(minHeight: 200, maxHeight: 340)
+        } else {
+            Text(item.text ?? item.normalizedText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .padding(.vertical, 4)
         }
     }
 
