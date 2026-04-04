@@ -25,6 +25,8 @@ struct SettingsView: View {
 
                         Spacer()
                     }
+
+                    StatusBanner(message: model.settingsStatusMessage, tone: model.settingsStatusTone)
                 }
 
                 Section("Provider") {
@@ -49,8 +51,25 @@ struct SettingsView: View {
                         .textFieldStyle(.roundedBorder)
                     TextField("Default Event Duration (minutes)", text: $model.runtimeSettings.defaultEventDurationMinutes)
                         .textFieldStyle(.roundedBorder)
+                }
+
+                Section("Notifications") {
                     Toggle("Notify on success", isOn: $model.runtimeSettings.notifyOnSuccess)
                     Toggle("Notify on failure", isOn: $model.runtimeSettings.notifyOnFailure)
+
+                    HStack {
+                        Button("Use Recommended Defaults") {
+                            model.applyRecommendedNotificationDefaults()
+                        }
+
+                        Spacer()
+                    }
+
+                    Text(model.notificationDefaultsSummary)
+                        .foregroundStyle(.secondary)
+
+                    Text("Direct Services now default to visible feedback on both success and failure so text actions do not feel silent the first time you use them.")
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Clipboard") {
@@ -154,15 +173,6 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 8)
                     }
-                }
-
-                Section("Status") {
-                    Text(model.settingsStatusMessage)
-                        .foregroundStyle(.secondary)
-                    Text(model.statusMessage)
-                        .foregroundStyle(.secondary)
-                    Text(model.clipboardStatusMessage)
-                        .foregroundStyle(.secondary)
                 }
             }
             .padding(20)

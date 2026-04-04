@@ -346,8 +346,10 @@ struct ReviewWorkspaceView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(model.activeWorkspaceMode == .clipboard ? model.clipboardStatusMessage : model.statusMessage)
-                .foregroundStyle(.secondary)
+            StatusBanner(
+                message: model.activeWorkspaceMode == .clipboard ? model.clipboardStatusMessage : model.statusMessage,
+                tone: model.activeWorkspaceMode == .clipboard ? model.clipboardStatusTone : model.statusTone
+            )
 
             if model.activeWorkspaceMode == .clipboard {
                 Text(model.clipboardStateSummary)
@@ -512,6 +514,66 @@ private struct ClipboardHistoryRow: View {
             .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+    }
+}
+
+struct StatusBanner: View {
+    let message: String
+    let tone: StatusTone
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: iconName)
+                .foregroundStyle(iconColor)
+                .padding(.top, 1)
+
+            Text(message)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(backgroundColor)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var iconName: String {
+        switch tone {
+        case .neutral:
+            return "info.circle"
+        case .success:
+            return "checkmark.circle.fill"
+        case .warning:
+            return "exclamationmark.triangle.fill"
+        case .failure:
+            return "xmark.octagon.fill"
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch tone {
+        case .neutral:
+            return Color(NSColor.controlBackgroundColor)
+        case .success:
+            return Color.green.opacity(0.12)
+        case .warning:
+            return Color.orange.opacity(0.14)
+        case .failure:
+            return Color.red.opacity(0.12)
+        }
+    }
+
+    private var iconColor: Color {
+        switch tone {
+        case .neutral:
+            return .secondary
+        case .success:
+            return .green
+        case .warning:
+            return .orange
+        case .failure:
+            return .red
+        }
     }
 }
 

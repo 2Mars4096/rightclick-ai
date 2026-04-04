@@ -34,9 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if appModel.needsProviderSetup {
             appModel.settingsStatusMessage = "Finish provider setup once, then RightClick AI can stay in the menu bar."
+            appModel.settingsStatusTone = .warning
             showSettingsWindow(nil)
         } else {
             appModel.statusMessage = "RightClick AI is running in the background. Use Services, the hotkey, or the menu bar item."
+            appModel.statusTone = .success
         }
     }
 

@@ -71,6 +71,13 @@ enum WorkspaceMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum StatusTone: String {
+    case neutral
+    case success
+    case warning
+    case failure
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private static let runtimeRootDefaultsKey = "rightClick.runtimeRootPath"
@@ -89,9 +96,11 @@ final class AppModel: ObservableObject {
     @Published var availableActions: [ActionDescriptor]
     @Published var preview: RuntimePreview?
     @Published var statusMessage = "Use the RightClick AI service on selected text to start a run."
+    @Published var statusTone: StatusTone = .neutral
     @Published var launchSource = "Manual launch"
     @Published var runtimeSettings = RuntimeSettingsDocument()
     @Published var settingsStatusMessage = "Load or create a runtime settings file from the native Settings window."
+    @Published var settingsStatusTone: StatusTone = .neutral
     @Published var launchAtLoginEnabled = false
     @Published var launchAtLoginStatusMessage = "RightClick AI will not start automatically when you log in."
     @Published var runtimeRootPath: String {
@@ -196,6 +205,18 @@ final class AppModel: ObservableObject {
 
     var clipboardStatusMessage: String {
         clipboardManager.statusMessage
+    }
+
+    var clipboardStatusTone: StatusTone {
+        if clipboardManager.lastErrorMessage != nil {
+            return .failure
+        }
+
+        if clipboardManager.isPaused {
+            return .warning
+        }
+
+        return .neutral
     }
 
     var clipboardStateSummary: String {
@@ -304,6 +325,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    var notificationDefaultsSummary: String {
+        switch (runtimeSettings.notifyOnSuccess, runtimeSettings.notifyOnFailure) {
+        case (true, true):
+            return "Recommended: notify on both success and failure."
+        case (false, true):
+            return "Failure-only: keep errors visible but keep success quiet."
+        case (true, false):
+            return "Success-only: unusual for a utility app, but possible."
+        case (false, false):
+            return "Silent mode: fastest once the workflow feels routine."
+        }
+    }
+
     func acceptSelectedText(_ text: String, source: String) {
         selectedText = text
         userInstruction = ""
@@ -314,14 +348,14 @@ final class AppModel: ObservableObject {
         do {
             let actions = try loadActions()
             if actions.isEmpty {
-                statusMessage = "Captured \(text.count) characters from \(source), but no installed actions were found."
+                setStatus("Captured \(text.count) characters from \(source), but no installed actions were found.", tone: .warning)
             } else {
-                statusMessage = "Captured \(text.count) characters from \(source). Ready to run \(actions.count) action(s)."
+                setStatus("Captured \(text.count) characters from \(source). Ready to run \(actions.count) action(s).")
             }
         } catch {
             availableActions = []
             selectedActionID = ""
-            statusMessage = error.localizedDescription
+            setStatus(error.localizedDescription, tone: .failure)
         }
     }
 
@@ -330,7 +364,7 @@ final class AppModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         guard !clipboardText.isEmpty else {
-            statusMessage = "The clipboard does not contain plain text yet."
+            setStatus("The clipboard does not contain plain text yet.", tone: .warning)
             return
         }
 
@@ -347,7 +381,7 @@ final class AppModel: ObservableObject {
         reconcileClipboardSelection()
 
         if filteredClipboardItems.isEmpty {
-            statusMessage = "Clipboard history is ready. Copy text, then use the clipboard workspace or the direct Services."
+            setStatus("Clipboard history is ready. Copy text, then use the clipboard workspace or the direct Services.")
         }
     }
 
@@ -362,9 +396,12 @@ final class AppModel: ObservableObject {
         }
 
         clipboardHotkeyEnabled = enabled
-        settingsStatusMessage = enabled
-            ? "Clipboard history hotkey enabled. Use \(clipboardHotkeyShortcutLabel) to open it quickly."
-            : "Clipboard history hotkey disabled."
+        setSettingsStatus(
+            enabled
+                ? "Clipboard history hotkey enabled. Use \(clipboardHotkeyShortcutLabel) to open it quickly."
+                : "Clipboard history hotkey disabled.",
+            tone: .success
+        )
     }
 
     func toggleClipboardPause() {
@@ -397,7 +434,7 @@ final class AppModel: ObservableObject {
 
     func restoreSelectedClipboardItem() {
         guard let item = selectedClipboardItem else {
-            statusMessage = "Choose a clipboard item first."
+            setStatus("Choose a clipboard item first.", tone: .warning)
             return
         }
 
@@ -436,7 +473,7 @@ final class AppModel: ObservableObject {
 
     func useSelectedClipboardItemInReview() {
         guard let item = selectedClipboardItem else {
-            statusMessage = "Choose a clipboard item first."
+            setStatus("Choose a clipboard item first.", tone: .warning)
             return
         }
 
@@ -449,7 +486,7 @@ final class AppModel: ObservableObject {
 
     func prepareClipboardAction(_ actionID: String) {
         guard let item = selectedClipboardItem else {
-            statusMessage = "Choose a clipboard item first."
+            setStatus("Choose a clipboard item first.", tone: .warning)
             return
         }
 
@@ -472,13 +509,13 @@ final class AppModel: ObservableObject {
     func preparePreview() {
         let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
-            statusMessage = "No selected text has been captured yet."
+            setStatus("No selected text has been captured yet.", tone: .warning)
             preview = nil
             return
         }
 
         guard let selectedAction else {
-            statusMessage = "Choose an action before preparing review."
+            setStatus("Choose an action before preparing review.", tone: .warning)
             preview = nil
             return
         }
@@ -493,27 +530,27 @@ final class AppModel: ObservableObject {
                 ),
                 configuration: runtimeConfiguration
             )
-            statusMessage = "Prepared a runtime-backed review for \(selectedAction.title)."
+            setStatus("Prepared a runtime-backed review for \(selectedAction.title).", tone: .success)
         } catch {
             preview = nil
-            statusMessage = error.localizedDescription
+            setStatus(error.localizedDescription, tone: .failure)
         }
     }
 
     func applyPreview() {
         guard let selectedAction else {
-            statusMessage = "Choose an action before applying."
+            setStatus("Choose an action before applying.", tone: .warning)
             return
         }
 
         let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
-            statusMessage = "No selected text has been captured yet."
+            setStatus("No selected text has been captured yet.", tone: .warning)
             return
         }
 
         guard let preview else {
-            statusMessage = "Prepare a review before applying."
+            setStatus("Prepare a review before applying.", tone: .warning)
             return
         }
 
@@ -528,9 +565,9 @@ final class AppModel: ObservableObject {
                     ),
                     configuration: runtimeConfiguration
                 )
-                statusMessage = "Applied \(selectedAction.title) through the shared runtime."
+                setStatus("Applied \(selectedAction.title) through the shared runtime.", tone: .success)
             } catch {
-                statusMessage = error.localizedDescription
+                setStatus(error.localizedDescription, tone: .failure)
             }
             return
         }
@@ -538,24 +575,24 @@ final class AppModel: ObservableObject {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(preview.proposedOutput, forType: .string)
-        statusMessage = "Copied \(selectedAction.title) output to the clipboard."
+        setStatus("Copied \(selectedAction.title) output to the clipboard.", tone: .success)
     }
 
     func reloadActions(initialLoad: Bool = false) {
         do {
             let actions = try loadActions()
             if actions.isEmpty {
-                statusMessage = "No installed actions were found at \(actionBundleLocation)."
+                setStatus("No installed actions were found at \(actionBundleLocation).", tone: .warning)
             } else if initialLoad {
-                statusMessage = "Loaded \(actions.count) action(s) from \(runtimeExecutablePath)."
+                setStatus("Loaded \(actions.count) action(s) from \(runtimeExecutablePath).")
             } else {
-                statusMessage = "Reloaded \(actions.count) action(s) from \(runtimeExecutablePath)."
+                setStatus("Reloaded \(actions.count) action(s) from \(runtimeExecutablePath).")
             }
         } catch {
             availableActions = []
             selectedActionID = ""
             preview = nil
-            statusMessage = error.localizedDescription
+            setStatus(error.localizedDescription, tone: .failure)
         }
     }
 
@@ -568,7 +605,7 @@ final class AppModel: ObservableObject {
     func openRuntimeSettingsFile() {
         let url = URL(fileURLWithPath: runtimeSettingsPath)
         guard FileManager.default.fileExists(atPath: runtimeSettingsPath) else {
-            statusMessage = "No runtime settings file exists at \(runtimeSettingsPath). Install the runtime first."
+            setStatus("No runtime settings file exists at \(runtimeSettingsPath). Install the runtime first.", tone: .failure)
             return
         }
 
@@ -578,7 +615,7 @@ final class AppModel: ObservableObject {
     func openRuntimeRootDirectory() {
         let path = (runtimeRootPath as NSString).expandingTildeInPath
         guard FileManager.default.fileExists(atPath: path) else {
-            statusMessage = "The runtime root does not exist yet at \(path). Install the runtime first."
+            setStatus("The runtime root does not exist yet at \(path). Install the runtime first.", tone: .failure)
             return
         }
 
@@ -588,7 +625,7 @@ final class AppModel: ObservableObject {
     func openActionsDirectory() {
         let path = actionBundleLocation
         guard FileManager.default.fileExists(atPath: path) else {
-            statusMessage = "The actions directory does not exist yet at \(path). Install the runtime first."
+            setStatus("The actions directory does not exist yet at \(path). Install the runtime first.", tone: .failure)
             return
         }
 
@@ -598,45 +635,59 @@ final class AppModel: ObservableObject {
     func reloadRuntimeSettings(initialLoad: Bool = false) {
         do {
             runtimeSettings = try RuntimeSettingsDocument.load(from: runtimeSettingsPath)
-            settingsStatusMessage = initialLoad
-                ? "Loaded runtime settings from \(runtimeSettingsPath)."
-                : "Reloaded runtime settings from \(runtimeSettingsPath)."
+            setSettingsStatus(
+                initialLoad
+                    ? "Loaded runtime settings from \(runtimeSettingsPath)."
+                    : "Reloaded runtime settings from \(runtimeSettingsPath)."
+            )
         } catch RuntimeSettingsError.missingSettings {
             runtimeSettings = RuntimeSettingsDocument()
-            settingsStatusMessage = "No settings.env was found at \(runtimeSettingsPath). Save from this window to create one."
+            setSettingsStatus("No settings.env was found at \(runtimeSettingsPath). Save from this window to create one.", tone: .warning)
         } catch {
-            settingsStatusMessage = error.localizedDescription
+            setSettingsStatus(error.localizedDescription, tone: .failure)
         }
     }
 
     func saveRuntimeSettings() {
         do {
             try runtimeSettings.write(to: runtimeSettingsPath)
-            settingsStatusMessage = "Saved runtime settings to \(runtimeSettingsPath) and synced provider secrets to Keychain."
+            setSettingsStatus("Saved runtime settings to \(runtimeSettingsPath) and synced provider secrets to Keychain.", tone: .success)
         } catch {
-            settingsStatusMessage = error.localizedDescription
+            setSettingsStatus(error.localizedDescription, tone: .failure)
         }
+    }
+
+    func applyRecommendedNotificationDefaults() {
+        runtimeSettings.notifyOnSuccess = true
+        runtimeSettings.notifyOnFailure = true
+        setSettingsStatus("Notification defaults restored. Direct Services will notify on both success and failure.", tone: .success)
     }
 
     func refreshLaunchAtLoginStatus(initialLoad: Bool = false) {
         let status = SMAppService.mainApp.status
         launchAtLoginEnabled = (status == .enabled)
+        let tone: StatusTone
 
         switch status {
         case .enabled:
             launchAtLoginStatusMessage = "RightClick AI will start automatically when you log in."
+            tone = .success
         case .notRegistered:
             launchAtLoginStatusMessage = "RightClick AI will stay off until you launch it manually."
+            tone = .neutral
         case .requiresApproval:
             launchAtLoginStatusMessage = "macOS still requires approval in System Settings > General > Login Items."
+            tone = .warning
         case .notFound:
             launchAtLoginStatusMessage = "Launch at login is unavailable from this app bundle."
+            tone = .failure
         @unknown default:
             launchAtLoginStatusMessage = "Launch at login status is unavailable right now."
+            tone = .warning
         }
 
         if !initialLoad {
-            settingsStatusMessage = launchAtLoginStatusMessage
+            setSettingsStatus(launchAtLoginStatusMessage, tone: tone)
         }
     }
 
@@ -649,18 +700,18 @@ final class AppModel: ObservableObject {
             }
         } catch {
             refreshLaunchAtLoginStatus(initialLoad: true)
-            settingsStatusMessage = "Could not update launch at login: \(error.localizedDescription)"
+            setSettingsStatus("Could not update launch at login: \(error.localizedDescription)", tone: .failure)
             return
         }
 
         refreshLaunchAtLoginStatus(initialLoad: true)
 
         if enabled, !launchAtLoginEnabled {
-            settingsStatusMessage = "RightClick AI asked macOS to launch it at login, but approval is still required."
+            setSettingsStatus("RightClick AI asked macOS to launch it at login, but approval is still required.", tone: .warning)
         } else if enabled {
-            settingsStatusMessage = "RightClick AI will now launch automatically when you log in."
+            setSettingsStatus("RightClick AI will now launch automatically when you log in.", tone: .success)
         } else {
-            settingsStatusMessage = "RightClick AI will no longer launch automatically when you log in."
+            setSettingsStatus("RightClick AI will no longer launch automatically when you log in.", tone: .success)
         }
     }
 
@@ -684,12 +735,12 @@ final class AppModel: ObservableObject {
         prepareAfterRouting: Bool = false
     ) {
         guard let item = clipboardManager.item(withID: itemID) else {
-            statusMessage = "The clipboard item no longer exists."
+            setStatus("The clipboard item no longer exists.", tone: .warning)
             return
         }
 
         guard let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) else {
-            statusMessage = "That clipboard item does not contain usable text yet."
+            setStatus("That clipboard item does not contain usable text yet.", tone: .warning)
             return
         }
 
@@ -703,11 +754,21 @@ final class AppModel: ObservableObject {
         }
 
         activeWorkspaceMode = .selection
-        statusMessage = "Loaded \(item.kind.displayName.lowercased()) content from clipboard history."
+        setStatus("Loaded \(item.kind.displayName.lowercased()) content from clipboard history.", tone: .success)
 
         if prepareAfterRouting {
             preparePreview()
         }
+    }
+
+    private func setStatus(_ message: String, tone: StatusTone = .neutral) {
+        statusMessage = message
+        statusTone = tone
+    }
+
+    private func setSettingsStatus(_ message: String, tone: StatusTone = .neutral) {
+        settingsStatusMessage = message
+        settingsStatusTone = tone
     }
 
     private func reconcileClipboardSelection() {
