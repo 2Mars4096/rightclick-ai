@@ -211,6 +211,12 @@ struct ReviewWorkspaceView: View {
                                             }
                                         }
 
+                                        if item.canOpen {
+                                            Button(item.kind == .fileURL ? "Reveal In Finder" : "Open") {
+                                                model.openClipboardItem(item.id)
+                                            }
+                                        }
+
                                         if item.canRestore {
                                             Button("Restore To Clipboard") {
                                                 model.restoreClipboardItem(item.id)
@@ -277,6 +283,9 @@ struct ReviewWorkspaceView: View {
                                         metadataRow("Last Captured", value: ReviewWorkspaceFormatters.timestamp.string(from: item.lastCapturedAt))
                                         metadataRow("Captured", value: ReviewWorkspaceFormatters.timestamp.string(from: item.capturedAt))
                                         metadataRow("Source", value: item.sourceName ?? "Unknown")
+                                        if item.kind == .url || item.kind == .fileURL {
+                                            metadataRow("References", value: "\(item.restorableURLs.count)")
+                                        }
                                         if let dimensions = item.dimensionsDescription {
                                             metadataRow("Dimensions", value: dimensions)
                                         }
@@ -297,6 +306,12 @@ struct ReviewWorkspaceView: View {
                                         model.useSelectedClipboardItemInReview()
                                     }
                                     .disabled(!model.canUseSelectedClipboardItemInReview)
+
+                                    if item.canOpen {
+                                        Button(item.kind == .fileURL ? "Reveal In Finder" : "Open") {
+                                            model.openSelectedClipboardItem()
+                                        }
+                                    }
 
                                     Button("Restore To Clipboard") {
                                         model.restoreSelectedClipboardItem()
@@ -365,10 +380,21 @@ struct ReviewWorkspaceView: View {
             }
             .frame(minHeight: 200, maxHeight: 340)
         } else {
-            Text(item.text ?? item.normalizedText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
+            if item.kind == .url || item.kind == .fileURL {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(item.restorableURLs.enumerated()), id: \.offset) { _, url in
+                        Text(item.kind == .fileURL ? url.path : url.absoluteString)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                }
                 .padding(.vertical, 4)
+            } else {
+                Text(item.text ?? item.normalizedText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(.vertical, 4)
+            }
         }
     }
 

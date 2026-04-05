@@ -79,4 +79,33 @@ extension ClipboardItem {
 
         return nil
     }
+
+    var restorableURLs: [URL] {
+        guard let text = restorableText else {
+            return []
+        }
+
+        let candidates = ClipboardTextNormalization.normalizeText(text)
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        switch kind {
+        case .url:
+            return candidates.compactMap { URL(string: $0) }
+        case .fileURL:
+            return candidates.map { URL(fileURLWithPath: $0) }
+        case .text, .image, .screenshot, .unknown:
+            return []
+        }
+    }
+
+    var canOpen: Bool {
+        switch kind {
+        case .url, .fileURL:
+            return !restorableURLs.isEmpty
+        case .text, .image, .screenshot, .unknown:
+            return false
+        }
+    }
 }

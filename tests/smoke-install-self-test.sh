@@ -70,6 +70,7 @@ wrapper_output="$("${calendar_cli}" --self-test)"
 
 "${repo_root}/tests/keychain-secret-resolution-smoke.sh"
 "${repo_root}/tests/clipboard-privacy-smoke.sh"
+"${repo_root}/tests/clipboard-reference-smoke.sh"
 "${repo_root}/tests/action-instruction-prompt-smoke.sh"
 "${repo_root}/tests/add-to-calendar-prompt-smoke.sh"
 "${repo_root}/tests/calendar-queue-smoke.sh"

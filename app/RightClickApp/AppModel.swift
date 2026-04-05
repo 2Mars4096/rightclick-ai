@@ -239,6 +239,10 @@ final class AppModel: ObservableObject {
         selectedClipboardItem?.canRestore == true
     }
 
+    var canOpenSelectedClipboardItem: Bool {
+        selectedClipboardItem?.canOpen == true
+    }
+
     var needsProviderSetup: Bool {
         switch runtimeSettings.provider {
         case "openai_compatible":
@@ -444,6 +448,21 @@ final class AppModel: ObservableObject {
 
     func restoreClipboardItem(_ itemID: ClipboardItem.ID) {
         _ = clipboardManager.restore(itemID: itemID)
+        objectWillChange.send()
+    }
+
+    func openSelectedClipboardItem() {
+        guard let item = selectedClipboardItem else {
+            setStatus("Choose a clipboard item first.", tone: .warning)
+            return
+        }
+
+        _ = clipboardManager.open(itemID: item.id)
+        objectWillChange.send()
+    }
+
+    func openClipboardItem(_ itemID: ClipboardItem.ID) {
+        _ = clipboardManager.open(itemID: itemID)
         objectWillChange.send()
     }
 

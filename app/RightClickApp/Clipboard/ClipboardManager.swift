@@ -230,6 +230,34 @@ final class ClipboardManager: ObservableObject {
         }
 
         let item = items[index]
+        if item.kind == .url || item.kind == .fileURL {
+            let urls = item.restorableURLs
+            guard !urls.isEmpty else {
+                lastErrorMessage = nil
+                statusMessage = "\(item.kind.displayName) clipboard items cannot be restored yet."
+                return nil
+            }
+
+            pasteboard.clearContents()
+            let didRestore = pasteboard.writeObjects(urls as [NSURL])
+
+            guard didRestore else {
+                lastErrorMessage = nil
+                statusMessage = "Could not restore \(item.kind.displayName.lowercased()) content to the clipboard."
+                return nil
+            }
+
+            lastObservedPasteboardChangeCount = pasteboard.changeCount
+
+            let restoredItem = recordRestore(on: item)
+            items[index] = restoredItem
+            reconcileAndPersistHistory()
+
+            lastErrorMessage = nil
+            statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
+            return restoredItem
+        }
+
         if item.kind.isTextual {
             guard let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) else {
                 lastErrorMessage = nil
@@ -278,6 +306,49 @@ final class ClipboardManager: ObservableObject {
         lastErrorMessage = nil
         statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
         return restoredItem
+    }
+
+    @discardableResult
+    func open(itemID: ClipboardItem.ID) -> Bool {
+        guard let item = item(withID: itemID) else {
+            lastErrorMessage = "Clipboard item was not found."
+            statusMessage = lastErrorMessage ?? "Clipboard item was not found."
+            return false
+        }
+
+        let urls = item.restorableURLs
+        guard !urls.isEmpty else {
+            lastErrorMessage = nil
+            statusMessage = "\(item.kind.displayName) clipboard items cannot be opened yet."
+            return false
+        }
+
+        let didOpen: Bool
+        if item.kind == .fileURL {
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+            didOpen = true
+        } else {
+            didOpen = urls.allSatisfy { NSWorkspace.shared.open($0) }
+        }
+
+        guard didOpen else {
+            lastErrorMessage = nil
+            statusMessage = "Could not open \(item.kind.displayName.lowercased()) content."
+            return false
+        }
+
+        if let index = items.firstIndex(where: { $0.id == itemID }) {
+            var openedItem = items[index]
+            openedItem.lastAccessedAt = .now
+            items[index] = openedItem
+            reconcileAndPersistHistory()
+        }
+
+        lastErrorMessage = nil
+        statusMessage = item.kind == .fileURL
+            ? "Revealed file references in Finder."
+            : "Opened URL content."
+        return true
     }
 
     func previewImage(for itemID: ClipboardItem.ID) -> NSImage? {
