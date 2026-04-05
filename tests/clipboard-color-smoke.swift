@@ -30,6 +30,7 @@ struct ClipboardColorSmoke {
         }
 
         testColorCaptureAndRestore(manager: manager, pasteboard: pasteboard)
+        testMissingColorAssetsArePruned(manager: manager, historyStore: historyStore, pasteboard: pasteboard)
         print("Clipboard color smoke passed.")
     }
 
@@ -72,6 +73,37 @@ struct ClipboardColorSmoke {
         assertNearlyEqual(restoredColor.redComponent, 0.2, label: "red")
         assertNearlyEqual(restoredColor.greenComponent, 0.4, label: "green")
         assertNearlyEqual(restoredColor.blueComponent, 0.6, label: "blue")
+    }
+
+    private static func testMissingColorAssetsArePruned(
+        manager: ClipboardManager,
+        historyStore: ClipboardHistoryStore,
+        pasteboard: NSPasteboard
+    ) {
+        let sourceColor = NSColor(srgbRed: 0.8, green: 0.2, blue: 0.4, alpha: 1)
+
+        pasteboard.clearContents()
+        guard pasteboard.writeObjects([sourceColor]) else {
+            fail("Expected color to be written to the pasteboard for prune coverage.")
+        }
+
+        guard let item = manager.captureCurrentPasteboard(
+            sourceName: "Digital Color Meter",
+            sourceBundleIdentifier: "com.apple.DigitalColorMeter"
+        ) else {
+            fail("Expected color clipboard item to be captured for prune coverage.")
+        }
+
+        guard let assetURL = historyStore.resolvedAssetURL(for: item) else {
+            fail("Expected color clipboard item to have a stored asset.")
+        }
+
+        try? FileManager.default.removeItem(at: assetURL)
+
+        let prunedItems = historyStore.deduplicatedAndPruned(try! historyStore.load())
+        guard !prunedItems.contains(where: { $0.id == item.id }) else {
+            fail("Expected color clipboard items with missing assets to be pruned from history.")
+        }
     }
 
     private static func assertNearlyEqual(_ actual: CGFloat, _ expected: CGFloat, label: String) {

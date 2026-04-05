@@ -243,36 +243,50 @@ final class ClipboardManager: ObservableObject {
 
         let item = items[index]
         if item.prefersAssetRestore {
-            guard let assetURL = historyStore.resolvedAssetURL(for: item),
-                  let assetData = try? Data(contentsOf: assetURL),
-                  let pasteboardTypeRawValue = item.assetPasteboardType else {
+            if let assetURL = historyStore.resolvedAssetURL(for: item),
+               let assetData = try? Data(contentsOf: assetURL),
+               let pasteboardTypeRawValue = item.assetPasteboardType {
+                pasteboard.clearContents()
+                let pasteboardType = NSPasteboard.PasteboardType(pasteboardTypeRawValue)
+                var didRestore = pasteboard.setData(assetData, forType: pasteboardType)
+                if let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) {
+                    didRestore = pasteboard.setString(text, forType: .string) || didRestore
+                }
+
+                guard didRestore else {
+                    lastErrorMessage = nil
+                    statusMessage = "Could not restore \(item.kind.displayName.lowercased()) content to the clipboard."
+                    return nil
+                }
+
+                lastObservedPasteboardChangeCount = pasteboard.changeCount
+
+                let restoredItem = recordRestore(on: item)
+                items[index] = restoredItem
+                reconcileAndPersistHistory()
+
                 lastErrorMessage = nil
-                statusMessage = "\(item.kind.displayName) clipboard data is unavailable."
-                return nil
+                statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
+                return restoredItem
             }
 
-            pasteboard.clearContents()
-            let pasteboardType = NSPasteboard.PasteboardType(pasteboardTypeRawValue)
-            var didRestore = pasteboard.setData(assetData, forType: pasteboardType)
             if let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) {
-                didRestore = pasteboard.setString(text, forType: .string) || didRestore
-            }
+                pasteboard.clearContents()
+                pasteboard.setString(text, forType: .string)
+                lastObservedPasteboardChangeCount = pasteboard.changeCount
 
-            guard didRestore else {
+                let restoredItem = recordRestore(on: item)
+                items[index] = restoredItem
+                reconcileAndPersistHistory()
+
                 lastErrorMessage = nil
-                statusMessage = "Could not restore \(item.kind.displayName.lowercased()) content to the clipboard."
-                return nil
+                statusMessage = "Restored the plain-text fallback for \(item.kind.displayName.lowercased()) content."
+                return restoredItem
             }
-
-            lastObservedPasteboardChangeCount = pasteboard.changeCount
-
-            let restoredItem = recordRestore(on: item)
-            items[index] = restoredItem
-            reconcileAndPersistHistory()
 
             lastErrorMessage = nil
-            statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
-            return restoredItem
+            statusMessage = "\(item.kind.displayName) clipboard data is unavailable."
+            return nil
         }
 
         if item.kind == .url || item.kind == .fileURL {
