@@ -178,7 +178,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
 
     var canRestore: Bool {
         if prefersAssetRestore {
-            return assetRelativePath != nil || canRestoreAsText
+            return assetRelativePath != nil || plainTextFallback != nil
         }
 
         if kind.isTextual {
@@ -202,11 +202,23 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
             return false
         }
 
-        guard let text else {
+        guard let plainTextFallback else {
             return false
         }
 
-        return ClipboardTextNormalization.hasMeaningfulContent(text)
+        return ClipboardTextNormalization.hasMeaningfulContent(plainTextFallback)
+    }
+
+    var plainTextFallback: String? {
+        if let text, ClipboardTextNormalization.hasMeaningfulContent(text) {
+            return text
+        }
+
+        if ClipboardTextNormalization.hasMeaningfulContent(normalizedText) {
+            return normalizedText
+        }
+
+        return nil
     }
 
     var dedupeKey: String {

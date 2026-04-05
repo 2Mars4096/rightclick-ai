@@ -270,7 +270,7 @@ final class ClipboardManager: ObservableObject {
                 return restoredItem
             }
 
-            if let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) {
+            if let text = item.plainTextFallback, ClipboardTextNormalization.hasMeaningfulContent(text) {
                 pasteboard.clearContents()
                 pasteboard.setString(text, forType: .string)
                 lastObservedPasteboardChangeCount = pasteboard.changeCount

@@ -11,7 +11,7 @@ struct ActionDescriptor: Identifiable, Hashable {
 @MainActor
 struct ClipboardColorSmoke {
     static func main() {
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("RightClickAIClipboardColorSmoke"))
+        let pasteboard = NSPasteboard.withUniqueName()
         let buildRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("right-click-color-smoke-\(UUID().uuidString)", isDirectory: true)
         let historyURL = buildRoot.appendingPathComponent("clipboard-history.json", isDirectory: false)
@@ -30,15 +30,19 @@ struct ClipboardColorSmoke {
         }
 
         testColorCaptureAndRestore(manager: manager, pasteboard: pasteboard)
-        testMissingColorAssetsArePruned(manager: manager, historyStore: historyStore, pasteboard: pasteboard)
+        testMissingColorAssetsFallBackToHex(manager: manager, historyStore: historyStore, pasteboard: pasteboard)
         print("Clipboard color smoke passed.")
     }
 
     private static func testColorCaptureAndRestore(manager: ClipboardManager, pasteboard: NSPasteboard) {
         let sourceColor = NSColor(srgbRed: 0.2, green: 0.4, blue: 0.6, alpha: 1)
+        guard let colorData = sourceColor.pasteboardPropertyList(forType: .color) as? Data else {
+            fail("Expected source color data to be encodable for the pasteboard.")
+        }
 
         pasteboard.clearContents()
-        guard pasteboard.writeObjects([sourceColor]) else {
+        pasteboard.declareTypes([.color], owner: nil)
+        guard pasteboard.setData(colorData, forType: .color) else {
             fail("Expected color to be written to the pasteboard.")
         }
 
@@ -75,23 +79,27 @@ struct ClipboardColorSmoke {
         assertNearlyEqual(restoredColor.blueComponent, 0.6, label: "blue")
     }
 
-    private static func testMissingColorAssetsArePruned(
+    private static func testMissingColorAssetsFallBackToHex(
         manager: ClipboardManager,
         historyStore: ClipboardHistoryStore,
         pasteboard: NSPasteboard
     ) {
         let sourceColor = NSColor(srgbRed: 0.8, green: 0.2, blue: 0.4, alpha: 1)
+        guard let colorData = sourceColor.pasteboardPropertyList(forType: .color) as? Data else {
+            fail("Expected fallback color data to be encodable for the pasteboard.")
+        }
 
         pasteboard.clearContents()
-        guard pasteboard.writeObjects([sourceColor]) else {
-            fail("Expected color to be written to the pasteboard for prune coverage.")
+        pasteboard.declareTypes([.color], owner: nil)
+        guard pasteboard.setData(colorData, forType: .color) else {
+            fail("Expected color to be written to the pasteboard for fallback coverage.")
         }
 
         guard let item = manager.captureCurrentPasteboard(
             sourceName: "Digital Color Meter",
             sourceBundleIdentifier: "com.apple.DigitalColorMeter"
         ) else {
-            fail("Expected color clipboard item to be captured for prune coverage.")
+            fail("Expected color clipboard item to be captured for fallback coverage.")
         }
 
         guard let assetURL = historyStore.resolvedAssetURL(for: item) else {
@@ -100,9 +108,17 @@ struct ClipboardColorSmoke {
 
         try? FileManager.default.removeItem(at: assetURL)
 
-        let prunedItems = historyStore.deduplicatedAndPruned(try! historyStore.load())
-        guard !prunedItems.contains(where: { $0.id == item.id }) else {
-            fail("Expected color clipboard items with missing assets to be pruned from history.")
+        guard manager.restore(itemID: item.id) != nil else {
+            fail("Expected missing color assets to fall back to a hex string restore.")
+        }
+
+        guard pasteboard.string(forType: .string) == "#CC3366" else {
+            fail("Expected missing color assets to restore their hex-string fallback.")
+        }
+
+        let retainedItems = historyStore.deduplicatedAndPruned(try! historyStore.load())
+        guard retainedItems.contains(where: { $0.id == item.id }) else {
+            fail("Expected color clipboard items with a hex fallback to stay in history even if the asset is missing.")
         }
     }
 

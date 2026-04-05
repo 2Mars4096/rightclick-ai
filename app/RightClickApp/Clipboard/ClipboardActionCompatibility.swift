@@ -71,15 +71,7 @@ extension ClipboardItem {
             return nil
         }
 
-        if let text, ClipboardTextNormalization.hasMeaningfulContent(text) {
-            return text
-        }
-
-        if ClipboardTextNormalization.hasMeaningfulContent(normalizedText) {
-            return normalizedText
-        }
-
-        return nil
+        return plainTextFallback
     }
 
     var restorableURLs: [URL] {

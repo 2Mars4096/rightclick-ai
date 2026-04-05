@@ -186,7 +186,7 @@ struct ClipboardHistoryStore: Codable, Hashable {
 
     private func pruneMissingAssets(_ items: [ClipboardItem]) -> [ClipboardItem] {
         items.filter { item in
-            let requiresAsset = item.kind.isDeferredVisual || (item.prefersAssetRestore && !item.canRestoreAsText)
+            let requiresAsset = item.kind.isDeferredVisual || (item.prefersAssetRestore && item.plainTextFallback == nil)
             guard requiresAsset else {
                 return true
             }

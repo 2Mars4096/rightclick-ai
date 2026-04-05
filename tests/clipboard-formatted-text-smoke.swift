@@ -11,7 +11,7 @@ struct ActionDescriptor: Identifiable, Hashable {
 @MainActor
 struct ClipboardFormattedTextSmoke {
     static func main() {
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("RightClickAIClipboardFormattedSmoke"))
+        let pasteboard = NSPasteboard.withUniqueName()
         let buildRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("right-click-formatted-smoke-\(UUID().uuidString)", isDirectory: true)
         let historyURL = buildRoot.appendingPathComponent("clipboard-history.json", isDirectory: false)
@@ -47,6 +47,7 @@ struct ClipboardFormattedTextSmoke {
         let htmlData = Data(html.utf8)
 
         pasteboard.clearContents()
+        pasteboard.declareTypes([.html, .string], owner: nil)
         pasteboard.setData(htmlData, forType: .html)
         pasteboard.setString("Hello Dexter\nSecond line", forType: .string)
 
@@ -88,6 +89,7 @@ struct ClipboardFormattedTextSmoke {
         }
 
         pasteboard.clearContents()
+        pasteboard.declareTypes([.rtf, .string], owner: nil)
         pasteboard.setData(rtfData, forType: .rtf)
         pasteboard.setString("Rich Text Example", forType: .string)
 
@@ -120,6 +122,7 @@ struct ClipboardFormattedTextSmoke {
         let htmlData = Data(html.utf8)
 
         pasteboard.clearContents()
+        pasteboard.declareTypes([.html, .string], owner: nil)
         pasteboard.setData(htmlData, forType: .html)
         pasteboard.setString("Fallback Rich Content", forType: .string)
 
