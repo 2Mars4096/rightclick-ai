@@ -11,6 +11,59 @@ struct ActionDescriptor: Identifiable, Hashable {
     let id: String
     let title: String
     let subtitle: String
+
+    var tier: ActionTier {
+        switch id {
+        case "add-to-calendar", "draft-response", "polish-draft", "explain", "summarize":
+            return .core
+        default:
+            return .utility
+        }
+    }
+
+    var displayOrder: Int {
+        switch id {
+        case "add-to-calendar":
+            return 0
+        case "draft-response":
+            return 1
+        case "polish-draft":
+            return 2
+        case "explain":
+            return 3
+        case "summarize":
+            return 4
+        case "extract-action-items":
+            return 5
+        case "rewrite-friendly":
+            return 6
+        default:
+            return 100
+        }
+    }
+}
+
+enum ActionTier: String {
+    case core
+    case utility
+
+    var sectionTitle: String {
+        switch self {
+        case .core:
+            return "Core Actions"
+        case .utility:
+            return "More Actions"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .core:
+            return "These are the main daily jobs RightClick AI is optimized for."
+        case .utility:
+            return "These are useful secondary utilities that stay available without competing with the core jobs."
+        }
+    }
 }
 
 struct RuntimeRequest {
@@ -177,6 +230,14 @@ final class AppModel: ObservableObject {
 
     var directServiceActionTitles: [String] {
         availableActions.map(\.title)
+    }
+
+    var coreActions: [ActionDescriptor] {
+        availableActions.filter { $0.tier == .core }
+    }
+
+    var utilityActions: [ActionDescriptor] {
+        availableActions.filter { $0.tier == .utility }
     }
 
     var filteredClipboardItems: [ClipboardItem] {

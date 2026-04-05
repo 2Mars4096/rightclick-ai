@@ -46,6 +46,7 @@ The product direction is now best described as:
 - the native app now includes local clipboard history plus a clipboard fallback path when Services are unavailable.
 - provider settings can now be edited natively and API keys are stored in the macOS Keychain.
 - `actions/` contains built-in file-based actions for summary, rewrite, draft-response, polish-draft, explanation, action-item extraction, and calendar creation.
+- the current product hierarchy is intentional: `add-to-calendar`, `draft-response`, `polish-draft`, `explain`, and `summarize` are the core daily jobs, while `extract-action-items` and `rewrite-friendly` remain secondary utilities.
 - the native installer currently exposes both the generic `RightClick AI` service and direct Services for the current built-in actions.
 - live `Add to Calendar` runs now queue FIFO in the shared runtime so repeated invocations do not overlap.
 - the clipboard workspace currently supports text, rich text, HTML, URLs, file references, images/screenshots, and colors for local preview/restore.

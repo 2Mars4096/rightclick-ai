@@ -450,9 +450,16 @@ struct InstalledRuntimeBridge: RuntimeBridge {
                 }
                 return ActionDescriptor(
                     id: parts[0],
-                    title: parts[1],
+                    title: displayTitle(for: parts[0], fallback: parts[1]),
                     subtitle: subtitle(for: parts[0], title: parts[1])
                 )
+            }
+            .sorted { lhs, rhs in
+                if lhs.displayOrder != rhs.displayOrder {
+                    return lhs.displayOrder < rhs.displayOrder
+                }
+
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
             }
 
         if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -521,6 +528,27 @@ struct InstalledRuntimeBridge: RuntimeBridge {
             return "Preview extracted events before the calendar side effect runs."
         default:
             return "Loaded from the configured runtime: \(title)."
+        }
+    }
+
+    private func displayTitle(for actionID: String, fallback: String) -> String {
+        switch actionID {
+        case "add-to-calendar":
+            return "Add to Calendar"
+        case "draft-response":
+            return "Draft Response"
+        case "polish-draft":
+            return "Polish Draft"
+        case "explain":
+            return "Explain"
+        case "summarize":
+            return "Summarize"
+        case "extract-action-items":
+            return "Extract Action Items"
+        case "rewrite-friendly":
+            return "Rewrite Friendly"
+        default:
+            return fallback
         }
     }
 

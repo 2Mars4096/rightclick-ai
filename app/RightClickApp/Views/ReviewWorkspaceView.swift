@@ -75,6 +75,32 @@ struct ReviewWorkspaceView: View {
             HSplitView {
                 GroupBox("Action") {
                     VStack(alignment: .leading, spacing: 12) {
+                        if !model.coreActions.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(ActionTier.core.sectionTitle)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+
+                                FlowLayout(spacing: 8) {
+                                    ForEach(model.coreActions) { action in
+                                        Button {
+                                            model.selectedActionID = action.id
+                                        } label: {
+                                            SelectableActionChip(
+                                                title: action.title,
+                                                isSelected: model.selectedActionID == action.id
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                Text(ActionTier.core.summary)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
                         Picker("Action", selection: $model.selectedActionID) {
                             ForEach(model.availableActions) { action in
                                 Text(action.title).tag(action.id)
@@ -146,9 +172,31 @@ struct ReviewWorkspaceView: View {
                     Text("These actions are also installed directly in the Services menu so you can run them without opening this window.")
                         .foregroundStyle(.secondary)
 
-                    FlowLayout(spacing: 10) {
-                        ForEach(model.directServiceActionTitles, id: \.self) { title in
-                            ActionChip(title: title)
+                    if !model.coreActions.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(ActionTier.core.sectionTitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            FlowLayout(spacing: 10) {
+                                ForEach(model.coreActions) { action in
+                                    ActionChip(title: action.title)
+                                }
+                            }
+                        }
+                    }
+
+                    if !model.utilityActions.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(ActionTier.utility.sectionTitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+
+                            FlowLayout(spacing: 10) {
+                                ForEach(model.utilityActions) { action in
+                                    ActionChip(title: action.title)
+                                }
+                            }
                         }
                     }
                 }
@@ -675,6 +723,21 @@ private struct ActionChip: View {
         .padding(.vertical, 6)
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(Capsule())
+    }
+}
+
+private struct SelectableActionChip: View {
+    let title: String
+    let isSelected: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+            .clipShape(Capsule())
     }
 }
 

@@ -5,7 +5,7 @@ Current state: a native macOS selected-text AI utility with a shared runtime, di
 The longer-term direction is broader, but the product today is best understood as:
 
 - selected text first
-- fast direct Services for common jobs
+- fast direct Services for the core jobs
 - one native review window for guided runs
 - one local clipboard workspace for fallback and reuse
 - centrally managed LLM providers and credentials
@@ -107,7 +107,7 @@ There are now 2 normal ways to use the product:
 
 - `Quick Mode`
   - select text
-  - use a direct macOS Service such as `Add to Calendar`, `Draft Response`, or `Summarize`
+  - use a direct macOS Service such as `Add to Calendar`, `Draft Response`, `Polish Draft`, `Explain`, or `Summarize`
   - calendar creates events directly
   - text actions copy results to the clipboard with visible success/failure feedback
 
@@ -122,6 +122,11 @@ You can also edit the calendar extraction prompt directly in:
 `~/Library/Application Support/RightClickAI/actions/add-to-calendar/prompt.txt`
 
 The direct Services are the fastest current path. `Add to Calendar` sends selected text through the shared runtime and, for live runs, queues requests FIFO so repeated invocations do not overlap. The text actions copy their output straight to the clipboard.
+
+The built-in actions are intentionally tiered:
+
+- core actions: `Add to Calendar`, `Draft Response`, `Polish Draft`, `Explain`, `Summarize`
+- secondary utilities: `Extract Action Items`, `Rewrite Friendly`
 
 The clipboard workspace is the built-in power feature:
 

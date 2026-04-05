@@ -59,13 +59,15 @@ After one install, a user should be able to:
 
 ### Built-In Actions
 
-- summarize
-- draft-response
-- polish-draft
-- explain
-- rewrite-friendly
-- extract-action-items
-- add-to-calendar
+- core:
+  - add-to-calendar
+  - draft-response
+  - polish-draft
+  - explain
+  - summarize
+- secondary:
+  - extract-action-items
+  - rewrite-friendly
 
 ## Explicitly Out Of Scope For MVP
 

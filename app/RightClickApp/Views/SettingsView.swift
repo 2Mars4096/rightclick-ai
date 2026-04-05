@@ -124,17 +124,43 @@ struct SettingsView: View {
                 }
 
                 Section("Installed Actions") {
-                    ForEach(model.availableActions) { action in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(action.title)
-                                .font(.headline)
-                            Text(action.subtitle)
+                    if !model.coreActions.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(ActionTier.core.summary)
                                 .foregroundStyle(.secondary)
+
+                            ForEach(model.coreActions) { action in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(action.title)
+                                        .font(.headline)
+                                    Text(action.subtitle)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
                         }
-                        .padding(.vertical, 2)
                     }
 
-                    Text("These actions are available in the RightClick AI window and as direct Services where the host app supports them.")
+                    if !model.utilityActions.isEmpty {
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(ActionTier.utility.summary)
+                                .foregroundStyle(.secondary)
+
+                            ForEach(model.utilityActions) { action in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(action.title)
+                                        .font(.headline)
+                                    Text(action.subtitle)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+
+                    Text("These actions are available in the RightClick AI window and as direct Services where the host app supports them. The app keeps the core actions surfaced first, then leaves the smaller utilities available below them.")
                         .foregroundStyle(.secondary)
                 }
 
