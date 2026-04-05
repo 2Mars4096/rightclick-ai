@@ -161,7 +161,8 @@ final class ClipboardManager: ObservableObject {
             sourceName: sourceName,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceWindowTitle: sourceWindowTitle,
-            isSensitiveSource: isSensitiveSource
+            isSensitiveSource: isSensitiveSource,
+            clipboardText: text
         ) else {
             return nil
         }
@@ -509,13 +510,15 @@ final class ClipboardManager: ObservableObject {
         sourceName: String?,
         sourceBundleIdentifier: String?,
         sourceWindowTitle: String?,
-        isSensitiveSource: Bool
+        isSensitiveSource: Bool,
+        clipboardText: String? = nil
     ) -> Bool {
         let privacyDecision = privacyPolicy.decision(
             for: sourceName,
             sourceBundleIdentifier: sourceBundleIdentifier,
             sourceWindowTitle: sourceWindowTitle,
-            isSensitiveSource: isSensitiveSource
+            isSensitiveSource: isSensitiveSource,
+            clipboardText: clipboardText
         )
 
         guard privacyDecision.allowsCapture else {

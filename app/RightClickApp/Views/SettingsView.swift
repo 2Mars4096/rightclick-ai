@@ -98,7 +98,7 @@ struct SettingsView: View {
                         Spacer()
                     }
 
-                    Text("Clipboard history stays local to this Mac. Known password-manager sources are excluded by default, temporary clipboard changes must stay stable briefly before capture, oversized images are skipped, and you can pause capture at any time from the menu bar or the hotkey window.")
+                    Text("Clipboard history stays local to this Mac. Known password-manager sources are excluded by default, likely secrets are skipped, temporary clipboard changes must stay stable briefly before capture, oversized images are skipped, and you can pause capture at any time from the menu bar or the hotkey window.")
                         .foregroundStyle(.secondary)
                 }
 
