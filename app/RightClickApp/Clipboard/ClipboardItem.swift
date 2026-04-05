@@ -3,6 +3,9 @@ import Foundation
 
 enum ClipboardItemKind: String, Codable, CaseIterable, Hashable {
     case text
+    case richText
+    case html
+    case color
     case url
     case fileURL
     case image
@@ -13,6 +16,12 @@ enum ClipboardItemKind: String, Codable, CaseIterable, Hashable {
         switch self {
         case .text:
             return "Text"
+        case .richText:
+            return "Rich Text"
+        case .html:
+            return "HTML"
+        case .color:
+            return "Color"
         case .url:
             return "URL"
         case .fileURL:
@@ -30,13 +39,27 @@ enum ClipboardItemKind: String, Codable, CaseIterable, Hashable {
         switch self {
         case .image, .screenshot:
             return true
-        case .text, .url, .fileURL, .unknown:
+        case .text, .richText, .html, .color, .url, .fileURL, .unknown:
             return false
         }
     }
 
     var isTextual: Bool {
-        !isDeferredVisual
+        switch self {
+        case .text, .richText, .html, .url, .fileURL, .unknown:
+            return true
+        case .color, .image, .screenshot:
+            return false
+        }
+    }
+
+    var isDeferredNonText: Bool {
+        switch self {
+        case .color, .image, .screenshot:
+            return true
+        case .text, .richText, .html, .url, .fileURL, .unknown:
+            return false
+        }
     }
 
     fileprivate func merged(preferredBy other: ClipboardItemKind) -> ClipboardItemKind {
@@ -71,6 +94,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
     let normalizedText: String
     let assetFingerprint: String?
     let assetRelativePath: String?
+    let assetPasteboardType: String?
     let assetByteCount: Int?
     let pixelWidth: Int?
     let pixelHeight: Int?
@@ -92,6 +116,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
         text: String?,
         assetFingerprint: String? = nil,
         assetRelativePath: String? = nil,
+        assetPasteboardType: String? = nil,
         assetByteCount: Int? = nil,
         pixelWidth: Int? = nil,
         pixelHeight: Int? = nil,
@@ -113,6 +138,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
         self.normalizedText = ClipboardTextNormalization.normalizeText(text ?? "")
         self.assetFingerprint = ClipboardTextNormalization.normalizeMetadata(assetFingerprint)
         self.assetRelativePath = ClipboardTextNormalization.normalizeMetadata(assetRelativePath)
+        self.assetPasteboardType = ClipboardTextNormalization.normalizeMetadata(assetPasteboardType)
         self.assetByteCount = assetByteCount
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
@@ -151,11 +177,24 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
     }
 
     var canRestore: Bool {
+        if prefersAssetRestore {
+            return assetRelativePath != nil || canRestoreAsText
+        }
+
         if kind.isTextual {
             return canRestoreAsText
         }
 
         return assetRelativePath != nil
+    }
+
+    var prefersAssetRestore: Bool {
+        switch kind {
+        case .richText, .html, .color:
+            return true
+        case .text, .url, .fileURL, .image, .screenshot, .unknown:
+            return false
+        }
     }
 
     var canRestoreAsText: Bool {
@@ -171,7 +210,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
     }
 
     var dedupeKey: String {
-        if kind.isDeferredVisual {
+        if kind.isDeferredVisual || prefersAssetRestore {
             return "visual:\(kind.rawValue):\(assetFingerprint ?? id.uuidString)"
         }
 
@@ -209,6 +248,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
                 text,
                 normalizedText,
                 assetRelativePath,
+                assetPasteboardType,
                 dimensionsDescription,
                 sourceName,
                 sourceBundleIdentifier,
@@ -230,6 +270,7 @@ struct ClipboardItem: Identifiable, Codable, Hashable {
             text: other.text ?? text,
             assetFingerprint: other.assetFingerprint ?? assetFingerprint,
             assetRelativePath: other.assetRelativePath ?? assetRelativePath,
+            assetPasteboardType: other.assetPasteboardType ?? assetPasteboardType,
             assetByteCount: other.assetByteCount ?? assetByteCount,
             pixelWidth: other.pixelWidth ?? pixelWidth,
             pixelHeight: other.pixelHeight ?? pixelHeight,

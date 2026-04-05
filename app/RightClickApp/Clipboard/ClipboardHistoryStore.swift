@@ -91,6 +91,10 @@ struct ClipboardHistoryStore: Codable, Hashable {
     }
 
     func saveVisualAsset(data: Data, itemID: UUID, fileExtension: String = "png") throws -> String {
+        try saveAsset(data: data, itemID: itemID, fileExtension: fileExtension)
+    }
+
+    func saveAsset(data: Data, itemID: UUID, fileExtension: String) throws -> String {
         try FileManager.default.createDirectory(at: assetsDirectoryURL, withIntermediateDirectories: true)
         let filename = "\(itemID.uuidString.lowercased()).\(fileExtension)"
         let assetURL = assetsDirectoryURL.appendingPathComponent(filename, isDirectory: false)

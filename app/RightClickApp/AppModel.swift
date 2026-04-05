@@ -524,6 +524,10 @@ final class AppModel: ObservableObject {
         clipboardManager.previewImage(for: item.id)
     }
 
+    func previewColor(for item: ClipboardItem) -> NSColor? {
+        clipboardManager.previewColor(for: item.id)
+    }
+
     private var normalizedUserInstruction: String? {
         let trimmed = userInstruction.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed

@@ -23,14 +23,16 @@ struct ClipboardActionCompatibility: Codable, Hashable {
     }
 
     static func evaluate(action: ActionDescriptor, item: ClipboardItem) -> ClipboardActionCompatibility {
-        if item.kind.isDeferredVisual {
+        if item.kind.isDeferredNonText {
             return ClipboardActionCompatibility(
                 actionID: action.id,
                 actionTitle: action.title,
                 itemID: item.id,
                 itemKind: item.kind,
                 status: .deferred,
-                reason: "Visual clipboard items can already be previewed and restored, but AI actions are still text-only."
+                reason: item.kind.isDeferredVisual
+                    ? "Visual clipboard items can already be previewed and restored, but AI actions are still text-only."
+                    : "\(item.kind.displayName) clipboard items can already be previewed and restored, but AI actions are still text-only."
             )
         }
 
@@ -95,7 +97,7 @@ extension ClipboardItem {
             return candidates.compactMap { URL(string: $0) }
         case .fileURL:
             return candidates.map { URL(fileURLWithPath: $0) }
-        case .text, .image, .screenshot, .unknown:
+        case .text, .richText, .html, .color, .image, .screenshot, .unknown:
             return []
         }
     }
@@ -104,7 +106,7 @@ extension ClipboardItem {
         switch kind {
         case .url, .fileURL:
             return !restorableURLs.isEmpty
-        case .text, .image, .screenshot, .unknown:
+        case .text, .richText, .html, .color, .image, .screenshot, .unknown:
             return false
         }
     }

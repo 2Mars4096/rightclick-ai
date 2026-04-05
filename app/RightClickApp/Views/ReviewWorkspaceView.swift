@@ -286,6 +286,12 @@ struct ReviewWorkspaceView: View {
                                         if item.kind == .url || item.kind == .fileURL {
                                             metadataRow("References", value: "\(item.restorableURLs.count)")
                                         }
+                                        if item.kind == .richText || item.kind == .html {
+                                            metadataRow("Format", value: item.kind.displayName)
+                                        }
+                                        if item.kind == .color {
+                                            metadataRow("Color", value: item.text ?? item.previewText)
+                                        }
                                         if let dimensions = item.dimensionsDescription {
                                             metadataRow("Dimensions", value: dimensions)
                                         }
@@ -333,7 +339,7 @@ struct ReviewWorkspaceView: View {
                                     VStack(alignment: .leading, spacing: 8) {
                                         let compatibleActions = model.selectedClipboardCompatibilities.filter { $0.isCompatible }
                                         if compatibleActions.isEmpty {
-                                            Text(item.kind.isDeferredVisual
+                                            Text(item.kind.isDeferredNonText
                                                 ? "This clipboard item can already be previewed and restored, but AI actions still expect text."
                                                 : "No installed text actions are available for this clipboard item yet.")
                                                 .foregroundStyle(.secondary)
@@ -379,6 +385,21 @@ struct ReviewWorkspaceView: View {
                     .padding(.vertical, 4)
             }
             .frame(minHeight: 200, maxHeight: 340)
+        } else if item.kind == .color, let color = model.previewColor(for: item) {
+            VStack(alignment: .leading, spacing: 12) {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(nsColor: color))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                    )
+                    .frame(height: 180)
+
+                Text(item.text ?? item.previewText)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+            .padding(.vertical, 4)
         } else {
             if item.kind == .url || item.kind == .fileURL {
                 VStack(alignment: .leading, spacing: 8) {
@@ -523,6 +544,12 @@ struct ReviewWorkspaceView: View {
         switch kind {
         case .text:
             return "doc.text"
+        case .richText:
+            return "textformat"
+        case .html:
+            return "chevron.left.slash.chevron.right"
+        case .color:
+            return "paintpalette"
         case .url:
             return "link"
         case .fileURL:

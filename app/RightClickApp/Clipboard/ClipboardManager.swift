@@ -202,6 +202,18 @@ final class ClipboardManager: ObservableObject {
                 sourceWindowTitle: sourceWindowTitle,
                 isSensitiveSource: isSensitiveSource
             )
+        case let .asset(kind, text, data, pasteboardType, fileExtension):
+            return captureAssetBackedItem(
+                text: text,
+                data: data,
+                kind: kind,
+                pasteboardType: pasteboardType,
+                fileExtension: fileExtension,
+                sourceName: sourceName,
+                sourceBundleIdentifier: sourceBundleIdentifier,
+                sourceWindowTitle: sourceWindowTitle,
+                isSensitiveSource: isSensitiveSource
+            )
         case let .visual(kind, data, byteCount, pixelWidth, pixelHeight):
             return captureVisual(
                 data: data,
@@ -230,6 +242,39 @@ final class ClipboardManager: ObservableObject {
         }
 
         let item = items[index]
+        if item.prefersAssetRestore {
+            guard let assetURL = historyStore.resolvedAssetURL(for: item),
+                  let assetData = try? Data(contentsOf: assetURL),
+                  let pasteboardTypeRawValue = item.assetPasteboardType else {
+                lastErrorMessage = nil
+                statusMessage = "\(item.kind.displayName) clipboard data is unavailable."
+                return nil
+            }
+
+            pasteboard.clearContents()
+            let pasteboardType = NSPasteboard.PasteboardType(pasteboardTypeRawValue)
+            var didRestore = pasteboard.setData(assetData, forType: pasteboardType)
+            if let text = item.restorableText, ClipboardTextNormalization.hasMeaningfulContent(text) {
+                didRestore = pasteboard.setString(text, forType: .string) || didRestore
+            }
+
+            guard didRestore else {
+                lastErrorMessage = nil
+                statusMessage = "Could not restore \(item.kind.displayName.lowercased()) content to the clipboard."
+                return nil
+            }
+
+            lastObservedPasteboardChangeCount = pasteboard.changeCount
+
+            let restoredItem = recordRestore(on: item)
+            items[index] = restoredItem
+            reconcileAndPersistHistory()
+
+            lastErrorMessage = nil
+            statusMessage = "Restored \(item.kind.displayName.lowercased()) content to the clipboard."
+            return restoredItem
+        }
+
         if item.kind == .url || item.kind == .fileURL {
             let urls = item.restorableURLs
             guard !urls.isEmpty else {
@@ -358,6 +403,16 @@ final class ClipboardManager: ObservableObject {
         }
 
         return NSImage(contentsOf: assetURL)
+    }
+
+    func previewColor(for itemID: ClipboardItem.ID) -> NSColor? {
+        guard let item = item(withID: itemID),
+              let assetURL = historyStore.resolvedAssetURL(for: item),
+              let assetData = try? Data(contentsOf: assetURL) else {
+            return nil
+        }
+
+        return color(from: assetData)
     }
 
     @discardableResult
@@ -544,6 +599,7 @@ final class ClipboardManager: ObservableObject {
 
     private enum ClipboardSnapshot {
         case text(kind: ClipboardItemKind, text: String)
+        case asset(kind: ClipboardItemKind, text: String, data: Data, pasteboardType: NSPasteboard.PasteboardType, fileExtension: String)
         case visual(kind: ClipboardItemKind, data: Data, byteCount: Int, pixelWidth: Int?, pixelHeight: Int?)
         case unsupported
     }
@@ -553,9 +609,8 @@ final class ClipboardManager: ObservableObject {
         sourceName: String?,
         sourceBundleIdentifier: String?
     ) -> ClipboardSnapshot {
-        if let string = pasteboard.string(forType: .string),
-           ClipboardTextNormalization.hasMeaningfulContent(string) {
-            return .text(kind: .text, text: string)
+        if let assetSnapshot = assetBackedSnapshot(from: pasteboard) {
+            return assetSnapshot
         }
 
         if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL], !urls.isEmpty {
@@ -564,6 +619,11 @@ final class ClipboardManager: ObservableObject {
                 .map { kind == .fileURL ? $0.path : $0.absoluteString }
                 .joined(separator: "\n")
             return .text(kind: kind, text: text)
+        }
+
+        if let string = pasteboard.string(forType: .string),
+           ClipboardTextNormalization.hasMeaningfulContent(string) {
+            return .text(kind: .text, text: string)
         }
 
         if let visualSnapshot = visualSnapshot(
@@ -599,6 +659,59 @@ final class ClipboardManager: ObservableObject {
         }
 
         return true
+    }
+
+    @discardableResult
+    private func captureAssetBackedItem(
+        text: String,
+        data: Data,
+        kind: ClipboardItemKind,
+        pasteboardType: NSPasteboard.PasteboardType,
+        fileExtension: String,
+        sourceName: String?,
+        sourceBundleIdentifier: String?,
+        sourceWindowTitle: String?,
+        isSensitiveSource: Bool
+    ) -> ClipboardItem? {
+        guard ClipboardTextNormalization.hasMeaningfulContent(text) else {
+            lastErrorMessage = nil
+            statusMessage = "\(kind.displayName) clipboard text was empty."
+            return nil
+        }
+
+        guard allowCapture(
+            sourceName: sourceName,
+            sourceBundleIdentifier: sourceBundleIdentifier,
+            sourceWindowTitle: sourceWindowTitle,
+            isSensitiveSource: isSensitiveSource,
+            clipboardText: text
+        ) else {
+            return nil
+        }
+
+        let itemID = UUID()
+
+        do {
+            let assetRelativePath = try historyStore.saveAsset(data: data, itemID: itemID, fileExtension: fileExtension)
+            let candidate = ClipboardItem(
+                id: itemID,
+                kind: kind,
+                text: text,
+                assetFingerprint: ClipboardTextNormalization.stableFingerprint(for: data),
+                assetRelativePath: assetRelativePath,
+                assetPasteboardType: pasteboardType.rawValue,
+                assetByteCount: data.count,
+                sourceName: sourceName,
+                sourceBundleIdentifier: sourceBundleIdentifier,
+                sourceWindowTitle: sourceWindowTitle
+            )
+
+            return ingestCapturedItem(candidate, sourceLabel: sourceName ?? kind.displayName)
+        } catch {
+            lastErrorMessage = error.localizedDescription
+            statusMessage = "Could not store \(kind.displayName.lowercased()) clipboard data."
+            return nil
+        }
     }
 
     @discardableResult
@@ -676,6 +789,46 @@ final class ClipboardManager: ObservableObject {
         )
     }
 
+    private func assetBackedSnapshot(from pasteboard: NSPasteboard) -> ClipboardSnapshot? {
+        if let htmlData = pasteboard.data(forType: .html),
+           let plainText = plainText(fromFormattedData: htmlData, documentType: .html),
+           ClipboardTextNormalization.hasMeaningfulContent(plainText) {
+            return .asset(
+                kind: .html,
+                text: plainText,
+                data: htmlData,
+                pasteboardType: .html,
+                fileExtension: "html"
+            )
+        }
+
+        if let rtfData = pasteboard.data(forType: .rtf),
+           let plainText = plainText(fromFormattedData: rtfData, documentType: .rtf),
+           ClipboardTextNormalization.hasMeaningfulContent(plainText) {
+            return .asset(
+                kind: .richText,
+                text: plainText,
+                data: rtfData,
+                pasteboardType: .rtf,
+                fileExtension: "rtf"
+            )
+        }
+
+        if let colorData = pasteboard.data(forType: .color),
+           let color = color(from: colorData),
+           let hex = hexString(for: color) {
+            return .asset(
+                kind: .color,
+                text: hex,
+                data: colorData,
+                pasteboardType: .color,
+                fileExtension: "clr"
+            )
+        }
+
+        return nil
+    }
+
     private func bestVisualData(from pasteboard: NSPasteboard) -> Data? {
         if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
             return pngData
@@ -703,6 +856,56 @@ final class ClipboardManager: ObservableObject {
         }
 
         return bitmapRepresentation.representation(using: .png, properties: [:])
+    }
+
+    private func plainText(
+        fromFormattedData data: Data,
+        documentType: NSAttributedString.DocumentType
+    ) -> String? {
+        let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
+            .documentType: documentType,
+            .characterEncoding: String.Encoding.utf8.rawValue
+        ]
+
+        guard let attributedString = try? NSAttributedString(
+            data: data,
+            options: options,
+            documentAttributes: nil
+        ) else {
+            return nil
+        }
+
+        return attributedString.string
+    }
+
+    private func color(from data: Data) -> NSColor? {
+        let scratchPasteboard = NSPasteboard(name: NSPasteboard.Name("RightClickAIClipboardColorScratch"))
+        scratchPasteboard.clearContents()
+        guard scratchPasteboard.setData(data, forType: .color),
+              let colors = scratchPasteboard.readObjects(forClasses: [NSColor.self], options: nil) as? [NSColor],
+              let color = colors.first else {
+            return nil
+        }
+
+        return color
+    }
+
+    private func hexString(for color: NSColor) -> String? {
+        guard let srgbColor = color.usingColorSpace(.sRGB) ?? color.usingColorSpace(.deviceRGB) else {
+            return nil
+        }
+
+        let red = Int(round(max(0, min(1, srgbColor.redComponent)) * 255))
+        let green = Int(round(max(0, min(1, srgbColor.greenComponent)) * 255))
+        let blue = Int(round(max(0, min(1, srgbColor.blueComponent)) * 255))
+        let alpha = max(0, min(1, srgbColor.alphaComponent))
+
+        if alpha < 0.999 {
+            let alphaByte = Int(round(alpha * 255))
+            return String(format: "#%02X%02X%02X%02X", red, green, blue, alphaByte)
+        }
+
+        return String(format: "#%02X%02X%02X", red, green, blue)
     }
 
     private func pixelSize(for image: NSImage) -> (width: Int, height: Int)? {
