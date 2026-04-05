@@ -5,15 +5,24 @@ struct ClipboardHistoryStore: Codable, Hashable {
         var maximumItemCount: Int
         var maximumAge: TimeInterval?
         var preserveProtectedItems: Bool
+        var maximumVisualItemCount: Int
+        var maximumVisualBytes: Int
+        var maximumSingleVisualBytes: Int
 
         init(
             maximumItemCount: Int = 250,
             maximumAge: TimeInterval? = 60 * 60 * 24 * 30,
-            preserveProtectedItems: Bool = true
+            preserveProtectedItems: Bool = true,
+            maximumVisualItemCount: Int = 48,
+            maximumVisualBytes: Int = 160 * 1024 * 1024,
+            maximumSingleVisualBytes: Int = 20 * 1024 * 1024
         ) {
             self.maximumItemCount = maximumItemCount
             self.maximumAge = maximumAge
             self.preserveProtectedItems = preserveProtectedItems
+            self.maximumVisualItemCount = maximumVisualItemCount
+            self.maximumVisualBytes = maximumVisualBytes
+            self.maximumSingleVisualBytes = maximumSingleVisualBytes
         }
 
         static let standard = RetentionPolicy()
@@ -121,6 +130,15 @@ struct ClipboardHistoryStore: Codable, Hashable {
         pruned(items, now: now)
     }
 
+    func allowsVisualCapture(byteCount: Int) -> Bool {
+        let maximumSingleVisualBytes = retentionPolicy.maximumSingleVisualBytes
+        guard maximumSingleVisualBytes > 0 else {
+            return true
+        }
+
+        return byteCount <= maximumSingleVisualBytes
+    }
+
     private func pruneByAge(_ items: [ClipboardItem], now: Date) -> [ClipboardItem] {
         guard let maximumAge = retentionPolicy.maximumAge, maximumAge > 0 else {
             return items
@@ -139,7 +157,7 @@ struct ClipboardHistoryStore: Codable, Hashable {
     private func pruneByCount(_ items: [ClipboardItem]) -> [ClipboardItem] {
         let maximumItemCount = max(1, retentionPolicy.maximumItemCount)
         guard items.count > maximumItemCount else {
-            return items
+            return pruneByVisualLimits(items)
         }
 
         guard retentionPolicy.preserveProtectedItems else {
@@ -159,7 +177,7 @@ struct ClipboardHistoryStore: Codable, Hashable {
             index -= 1
         }
 
-        return prunedItems.sorted(by: ClipboardItem.sortBefore)
+        return pruneByVisualLimits(prunedItems.sorted(by: ClipboardItem.sortBefore))
     }
 
     private func pruneMissingAssets(_ items: [ClipboardItem]) -> [ClipboardItem] {
@@ -192,6 +210,61 @@ struct ClipboardHistoryStore: Codable, Hashable {
         for assetFile in assetFiles where !referencedAssetNames.contains(assetFile.lastPathComponent) {
             try? fileManager.removeItem(at: assetFile)
         }
+    }
+
+    private func pruneByVisualLimits(_ items: [ClipboardItem]) -> [ClipboardItem] {
+        let visualItemLimit = max(1, retentionPolicy.maximumVisualItemCount)
+        let visualByteLimit = max(0, retentionPolicy.maximumVisualBytes)
+
+        guard visualItemLimit > 0 || visualByteLimit > 0 else {
+            return items
+        }
+
+        var prunedItems = items
+
+        func visualItems(in items: [ClipboardItem]) -> [ClipboardItem] {
+            items.filter(\.kind.isDeferredVisual)
+        }
+
+        func visualBytes(in items: [ClipboardItem]) -> Int {
+            visualItems(in: items).reduce(0) { partialResult, item in
+                partialResult + max(0, item.assetByteCount ?? 0)
+            }
+        }
+
+        func exceedsVisualLimits(_ items: [ClipboardItem]) -> Bool {
+            let visualItemsCount = visualItems(in: items).count
+            if visualItemsCount > visualItemLimit {
+                return true
+            }
+
+            if visualByteLimit > 0, visualBytes(in: items) > visualByteLimit {
+                return true
+            }
+
+            return false
+        }
+
+        while exceedsVisualLimits(prunedItems) {
+            guard let removalIndex = prunedItems.indices.reversed().first(where: { index in
+                let item = prunedItems[index]
+                guard item.kind.isDeferredVisual else {
+                    return false
+                }
+
+                if retentionPolicy.preserveProtectedItems, item.isProtected {
+                    return false
+                }
+
+                return true
+            }) else {
+                break
+            }
+
+            prunedItems.remove(at: removalIndex)
+        }
+
+        return prunedItems.sorted(by: ClipboardItem.sortBefore)
     }
 }
 

@@ -5,6 +5,15 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class ClipboardManager: ObservableObject {
+    private struct PendingClipboardObservation {
+        let changeCount: Int
+        let firstObservedAt: Date
+        let sourceName: String?
+        let sourceBundleIdentifier: String?
+        let sourceWindowTitle: String?
+        let isSensitiveSource: Bool
+    }
+
     @Published private(set) var items: [ClipboardItem] = []
     @Published private(set) var isMonitoring = false
     @Published private(set) var isPaused = false
@@ -16,19 +25,23 @@ final class ClipboardManager: ObservableObject {
     private var privacyPolicy: ClipboardPrivacyPolicy
     private let pasteboard: NSPasteboard
     private let monitoringInterval: TimeInterval
+    private let minimumStableMonitoringDuration: TimeInterval
     nonisolated(unsafe) private var monitoringTimer: Timer?
     private var lastObservedPasteboardChangeCount: Int?
+    private var pendingObservation: PendingClipboardObservation?
 
     init(
         historyStore: ClipboardHistoryStore = ClipboardHistoryStore(),
         privacyPolicy: ClipboardPrivacyPolicy = .standard,
         pasteboard: NSPasteboard = .general,
-        monitoringInterval: TimeInterval = 0.5
+        monitoringInterval: TimeInterval = 0.5,
+        minimumStableMonitoringDuration: TimeInterval = 1.5
     ) {
         self.historyStore = historyStore
         self.privacyPolicy = privacyPolicy
         self.pasteboard = pasteboard
         self.monitoringInterval = monitoringInterval
+        self.minimumStableMonitoringDuration = minimumStableMonitoringDuration
 
         reloadHistory()
     }
@@ -55,6 +68,7 @@ final class ClipboardManager: ObservableObject {
         }
 
         lastObservedPasteboardChangeCount = pasteboard.changeCount
+        pendingObservation = nil
         let timer = Timer(timeInterval: monitoringInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.pollPasteboardIfNeeded()
@@ -72,6 +86,7 @@ final class ClipboardManager: ObservableObject {
         monitoringTimer = nil
         isMonitoring = false
         lastObservedPasteboardChangeCount = nil
+        pendingObservation = nil
         statusMessage = "Clipboard monitoring stopped."
     }
 
@@ -85,6 +100,7 @@ final class ClipboardManager: ObservableObject {
         isPaused = false
         pauseReason = nil
         lastObservedPasteboardChangeCount = pasteboard.changeCount
+        pendingObservation = nil
         statusMessage = "Clipboard capture resumed."
     }
 
@@ -363,19 +379,37 @@ final class ClipboardManager: ObservableObject {
     private func pollPasteboardIfNeeded() {
         if isPaused {
             lastObservedPasteboardChangeCount = pasteboard.changeCount
+            pendingObservation = nil
             return
         }
 
         let currentChangeCount = pasteboard.changeCount
+        if let pendingObservation {
+            if pendingObservation.changeCount == currentChangeCount {
+                let stableDuration = Date.now.timeIntervalSince(pendingObservation.firstObservedAt)
+                guard stableDuration >= minimumStableMonitoringDuration else {
+                    return
+                }
+
+                _ = captureCurrentPasteboard(
+                    sourceName: pendingObservation.sourceName,
+                    sourceBundleIdentifier: pendingObservation.sourceBundleIdentifier,
+                    sourceWindowTitle: pendingObservation.sourceWindowTitle,
+                    isSensitiveSource: pendingObservation.isSensitiveSource
+                )
+                self.pendingObservation = nil
+                return
+            }
+
+            self.pendingObservation = makePendingObservation(changeCount: currentChangeCount)
+            return
+        }
+
         guard lastObservedPasteboardChangeCount != currentChangeCount else {
             return
         }
 
-        let frontmostApplication = NSWorkspace.shared.frontmostApplication
-        _ = captureCurrentPasteboard(
-            sourceName: frontmostApplication?.localizedName,
-            sourceBundleIdentifier: frontmostApplication?.bundleIdentifier
-        )
+        pendingObservation = makePendingObservation(changeCount: currentChangeCount)
     }
 
     private func ingestCapturedItem(_ candidate: ClipboardItem, sourceLabel: String) -> ClipboardItem? {
@@ -514,6 +548,12 @@ final class ClipboardManager: ObservableObject {
             return nil
         }
 
+        guard historyStore.allowsVisualCapture(byteCount: byteCount) else {
+            lastErrorMessage = nil
+            statusMessage = "Skipped \(kind.displayName.lowercased()) clipboard data larger than \(ByteCountFormatter.string(fromByteCount: Int64(historyStore.retentionPolicy.maximumSingleVisualBytes), countStyle: .file))."
+            return nil
+        }
+
         let itemID = UUID()
 
         do {
@@ -616,5 +656,17 @@ final class ClipboardManager: ObservableObject {
         }
 
         return .image
+    }
+
+    private func makePendingObservation(changeCount: Int) -> PendingClipboardObservation {
+        let frontmostApplication = NSWorkspace.shared.frontmostApplication
+        return PendingClipboardObservation(
+            changeCount: changeCount,
+            firstObservedAt: .now,
+            sourceName: frontmostApplication?.localizedName,
+            sourceBundleIdentifier: frontmostApplication?.bundleIdentifier,
+            sourceWindowTitle: nil,
+            isSensitiveSource: false
+        )
     }
 }
