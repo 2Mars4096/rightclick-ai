@@ -1,8 +1,14 @@
 # Right Click
 
-Current state: shared runtime plus a native macOS app shell for selected-text actions.
+Current state: a native macOS selected-text AI utility with a shared runtime, direct Services, and local clipboard history.
 
-The longer-term direction is broader: install once, expose one native macOS right-click entry point, manage LLM providers centrally, and load open-source action bundles for selected text first, then files/images later.
+The longer-term direction is broader, but the product today is best understood as:
+
+- selected text first
+- fast direct Services for common jobs
+- one native review window for guided runs
+- one local clipboard workspace for fallback and reuse
+- centrally managed LLM providers and credentials
 
 ## Docs
 
@@ -27,7 +33,9 @@ What exists today:
 - native app now behaves like a menu bar utility instead of forcing the review window on launch
 - native settings now let the user enable or disable launch at login
 - direct Services for every current built-in action, not only calendar
+- clipboard history with a native hotkey, local storage, search, pin/favorite, and restore
 - clipboard fallback in the native review window for apps where Services are weak
+- first-class clipboard support for text, rich text, HTML, URLs, file references, images/screenshots, and colors
 - direct `Add to Calendar` service backed by the same shared runtime
 - FIFO queueing for repeated live calendar runs through `right-click-calendar`
 - legacy Quick Action installer retained for runtime smoke coverage
@@ -93,11 +101,36 @@ For Moonshot and similar slower OpenAI-compatible providers, the current default
 
 In the native `RightClick AI` app, non-calendar text actions can also take a short optional instruction such as `keep it warm`, `focus on risks`, or `explain for a beginner`.
 
+## Product Modes
+
+There are now 2 normal ways to use the product:
+
+- `Quick Mode`
+  - select text
+  - use a direct macOS Service such as `Add to Calendar`, `Draft Response`, or `Summarize`
+  - calendar creates events directly
+  - text actions copy results to the clipboard with visible success/failure feedback
+
+- `Review Mode`
+  - use `RightClick AI` from Services, the menu bar, or the clipboard history hotkey
+  - choose an action in the native window
+  - inspect the result before applying it
+  - use this path for guided review, clipboard history, and apps where Services are weak
+
 You can also edit the calendar extraction prompt directly in:
 
 `~/Library/Application Support/RightClickAI/actions/add-to-calendar/prompt.txt`
 
 The direct Services are the fastest current path. `Add to Calendar` sends selected text through the shared runtime and, for live runs, queues requests FIFO so repeated invocations do not overlap. The text actions copy their output straight to the clipboard.
+
+The clipboard workspace is the built-in power feature:
+
+- open it from the menu bar or the global hotkey
+- search recent clipboard items
+- pin or favorite items
+- restore them to the clipboard
+- run the same text actions on saved clipboard text
+- preview and restore non-text clipboard items locally on the same Mac
 
 ## Custom Provider
 

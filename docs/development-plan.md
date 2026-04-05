@@ -4,7 +4,7 @@
 
 Build a native macOS utility that makes "select text, right-click, do something smart" feel built in.
 
-The first serious use case is calendar extraction, but the product should not be limited to calendar actions. The platform should support selected-text LLM actions broadly, then expand to files, URLs, images, and other right-clickable objects.
+The first serious use case was calendar extraction, but the product is now broader: selected-text LLM actions plus a local clipboard workspace that lets users reuse recent items and run the same actions on them.
 
 ## Product Principles
 
@@ -19,10 +19,11 @@ The first serious use case is calendar extraction, but the product should not be
 
 We are building:
 
-- one native right-click entry point
+- one native right-click-first utility
 - one local runtime
 - one provider settings surface
 - many file-based action bundles
+- one local clipboard workspace that shares the same action/runtime layer
 
 We are not building:
 
@@ -59,12 +60,13 @@ So the right move is:
 
 ### 1. One Entry Point, Many Actions
 
-Do not register one Quick Action per feature.
+Do not depend on one Automator workflow per feature.
 
 Instead:
 
-- install one entry point such as `RightClick AI`
-- let the app choose from actions internally
+- keep one generic entry point such as `RightClick AI`
+- allow direct built-in Services for the most common actions
+- keep the real action model inside the runtime and app
 
 ### 2. File-Based Action Bundles
 

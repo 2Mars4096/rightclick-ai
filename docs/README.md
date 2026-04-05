@@ -1,12 +1,13 @@
 # Right Click Docs
 
-This repo now contains both the original shell-based calendar prototype and an in-progress native macOS app shell.
+This repo now contains both the original shell-based calendar prototype and a broader native macOS utility.
 
-The product direction is larger:
+The product direction is now best described as:
 
 - install once
 - feel native on macOS
-- expose one reusable right-click entry point
+- make selected-text AI actions fast
+- keep clipboard history local and reusable
 - manage LLM providers and credentials centrally
 - load file-based action bundles instead of making users edit Quick Actions by hand
 
@@ -42,11 +43,12 @@ The product direction is larger:
 
 - `runtime/` contains the shared action runner used by both the shell prototype and the native app.
 - `app/` contains the native selected-text macOS host and settings UI.
-- the native app also has a clipboard fallback path when Services are unavailable.
+- the native app now includes local clipboard history plus a clipboard fallback path when Services are unavailable.
 - provider settings can now be edited natively and API keys are stored in the macOS Keychain.
 - `actions/` contains built-in file-based actions for summary, rewrite, draft-response, polish-draft, explanation, action-item extraction, and calendar creation.
-- the native installer currently exposes both the generic `RightClick AI` service and a direct `Add to Calendar` service.
+- the native installer currently exposes both the generic `RightClick AI` service and direct Services for the current built-in actions.
 - live `Add to Calendar` runs now queue FIFO in the shared runtime so repeated invocations do not overlap.
+- the clipboard workspace currently supports text, rich text, HTML, URLs, file references, images/screenshots, and colors for local preview/restore.
 - `install.sh` still installs the legacy `Add to Calendar` workflow for shell/runtime validation.
 - `scripts/build-native-app.sh` builds the native app bundle when full Xcode is available.
 - `scripts/install-native-app.sh` installs the native app plus shared runtime without requiring manual Services setup.
