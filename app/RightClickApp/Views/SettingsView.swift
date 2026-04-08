@@ -110,8 +110,13 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             TextField("Calendar Name", text: $model.runtimeSettings.calendarName)
                                 .textFieldStyle(.roundedBorder)
-                            TextField("Timezone", text: $model.runtimeSettings.timezone)
-                                .textFieldStyle(.roundedBorder)
+
+                            Picker("Timezone", selection: $model.runtimeSettings.timezone) {
+                                ForEach(timeZoneOptions) { option in
+                                    Text(option.label).tag(option.id)
+                                }
+                            }
+
                             TextField("Default Event Duration (minutes)", text: $model.runtimeSettings.defaultEventDurationMinutes)
                                 .textFieldStyle(.roundedBorder)
                             TextField("Request Timeout (seconds)", text: $model.runtimeSettings.requestTimeoutSeconds)
@@ -163,35 +168,58 @@ struct SettingsView: View {
                 Section {
                     DisclosureGroup("Advanced") {
                         VStack(alignment: .leading, spacing: 16) {
-                            TextField("Runtime Root", text: $model.runtimeRootPath)
-                                .textFieldStyle(.roundedBorder)
+                            Text("RightClick AI stores its runtime files in Application Support, not inside the app bundle. That keeps settings, actions, and clipboard history persistent across app updates. Cache would be the wrong place because macOS may purge it.")
+                                .foregroundStyle(.secondary)
 
-                            HStack {
-                                Button("Use Installed Default") {
-                                    model.resetRuntimeRootPath()
-                                }
+                            VStack(alignment: .leading, spacing: 10) {
+                                runtimePathRow(title: "Runtime Storage", value: model.runtimeConfiguration.expandedRuntimeRootPath)
+                                runtimePathRow(title: "settings.env", value: model.runtimeSettingsPath)
+                                runtimePathRow(title: "Actions", value: model.actionBundleLocation)
+                            }
 
-                                Button("Reload Actions") {
-                                    model.reloadActions()
+                            HStack(alignment: .center, spacing: 10) {
+                                Button("Open Runtime Folder") {
+                                    model.openRuntimeRootDirectory()
                                 }
 
                                 Button("Open settings.env") {
                                     model.openRuntimeSettingsFile()
                                 }
 
-                                Button("Open Runtime Root") {
-                                    model.openRuntimeRootDirectory()
+                                Button("Open Actions Folder") {
+                                    model.openActionsDirectory()
                                 }
 
                                 Spacer()
                             }
 
-                            VStack(alignment: .leading, spacing: 10) {
-                                runtimePathRow(title: "Executable", value: model.runtimeExecutablePath)
-                                runtimePathRow(title: "settings.env", value: model.runtimeSettingsPath)
-                                runtimePathRow(title: "Actions", value: model.actionBundleLocation)
-                                runtimePathRow(title: "Keychain Service", value: model.runtimeKeychainServiceName)
+                            DisclosureGroup("Developer Override") {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    TextField("Runtime Root Override", text: $model.runtimeRootPath)
+                                        .textFieldStyle(.roundedBorder)
+
+                                    HStack(alignment: .center, spacing: 10) {
+                                        Button("Use Installed Default") {
+                                            model.resetRuntimeRootPath()
+                                        }
+
+                                        Button("Reload Actions") {
+                                            model.reloadActions()
+                                        }
+
+                                        Spacer()
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        runtimePathRow(title: "Executable", value: model.runtimeExecutablePath)
+                                        runtimePathRow(title: "Keychain Service", value: model.runtimeKeychainServiceName)
+                                    }
+
+                                    Text("Only change this if you are developing against a different checked-out runtime. Normal installs should leave this on the Application Support location above.")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .padding(.top, 4)
                         }
                         .padding(.vertical, 8)
                     }
@@ -265,6 +293,41 @@ struct SettingsView: View {
         }
     }
 
+    private var timeZoneOptions: [TimeZoneOption] {
+        var identifiers: [String] = [
+            model.runtimeSettings.timezone,
+            TimeZone.current.identifier,
+            "UTC"
+        ]
+        identifiers.append(contentsOf: TimeZone.knownTimeZoneIdentifiers.sorted())
+
+        var seen = Set<String>()
+        return identifiers.compactMap { identifier in
+            guard !identifier.isEmpty else {
+                return nil
+            }
+            guard seen.insert(identifier).inserted else {
+                return nil
+            }
+
+            return TimeZoneOption(
+                id: identifier,
+                label: timeZoneLabel(for: identifier)
+            )
+        }
+    }
+
+    private func timeZoneLabel(for identifier: String) -> String {
+        guard let timeZone = TimeZone(identifier: identifier) else {
+            return identifier
+        }
+
+        let seconds = timeZone.secondsFromGMT(for: Date())
+        let hours = seconds / 3600
+        let minutes = abs(seconds % 3600) / 60
+        return "\(identifier) (UTC\(hours >= 0 ? "+" : "")\(hours):\(String(format: "%02d", minutes)))"
+    }
+
     private func runtimePathRow(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -275,4 +338,9 @@ struct SettingsView: View {
         }
         .padding(.vertical, 2)
     }
+}
+
+private struct TimeZoneOption: Identifiable, Hashable {
+    let id: String
+    let label: String
 }
