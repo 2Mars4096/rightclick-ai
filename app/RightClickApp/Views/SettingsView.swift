@@ -7,7 +7,7 @@ struct SettingsView: View {
         ScrollView {
             Form {
                 Section {
-                    Text("Configure your provider once, then keep RightClick AI running quietly in the menu bar.")
+                    Text("Set up your provider once, then let RightClick AI stay in the background as a Mac utility.")
                         .foregroundStyle(.secondary)
 
                     HStack {
@@ -19,14 +19,77 @@ struct SettingsView: View {
                             model.reloadRuntimeSettings()
                         }
 
-                        Button("Open Actions Folder") {
-                            model.openActionsDirectory()
+                        Spacer()
+                    }
+
+                    StatusBanner(message: model.settingsStatusMessage, tone: model.settingsStatusTone)
+                }
+
+                Section("General") {
+                    Toggle(
+                        "Start RightClick AI automatically after login",
+                        isOn: Binding(
+                            get: { model.launchAtLoginEnabled },
+                            set: { model.setLaunchAtLoginEnabled($0) }
+                        )
+                    )
+
+                    Text("This is the normal macOS startup behavior for menu bar apps. The app launches after you sign in, not before the login screen.")
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button("Refresh Startup Status") {
+                            model.refreshLaunchAtLoginStatus()
                         }
 
                         Spacer()
                     }
 
-                    StatusBanner(message: model.settingsStatusMessage, tone: model.settingsStatusTone)
+                    StatusBanner(message: model.launchAtLoginStatusMessage, tone: model.launchAtLoginStatusTone)
+
+                    Divider()
+
+                    Toggle(
+                        "Enable clipboard history hotkey (\(model.clipboardHotkeyShortcutLabel))",
+                        isOn: Binding(
+                            get: { model.clipboardHotkeyEnabled },
+                            set: { model.setClipboardHotkeyEnabled($0) }
+                        )
+                    )
+
+                    HStack {
+                        Button("Open Clipboard History") {
+                            (NSApp.delegate as? AppDelegate)?.showClipboardHistory(nil)
+                        }
+
+                        Button(model.clipboardManager.isPaused ? "Resume Clipboard Capture" : "Pause Clipboard Capture") {
+                            model.toggleClipboardPause()
+                        }
+
+                        Spacer()
+                    }
+
+                    Text("Clipboard history stays local to this Mac. Known password-manager sources are excluded by default, likely secrets are skipped, temporary clipboard changes must stay stable briefly before capture, and you can pause capture any time.")
+                        .foregroundStyle(.secondary)
+
+                    DisclosureGroup("Notifications") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle("Notify on success", isOn: $model.runtimeSettings.notifyOnSuccess)
+                            Toggle("Notify on failure", isOn: $model.runtimeSettings.notifyOnFailure)
+
+                            HStack {
+                                Button("Use Recommended Defaults") {
+                                    model.applyRecommendedNotificationDefaults()
+                                }
+
+                                Spacer()
+                            }
+
+                            Text(model.notificationDefaultsSummary)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 8)
+                    }
                 }
 
                 Section("Provider") {
@@ -42,126 +105,59 @@ struct SettingsView: View {
                     activeProviderFields
                 }
 
-                Section("Runtime Defaults") {
-                    TextField("Request Timeout (seconds)", text: $model.runtimeSettings.requestTimeoutSeconds)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Calendar Name", text: $model.runtimeSettings.calendarName)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Timezone", text: $model.runtimeSettings.timezone)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Default Event Duration (minutes)", text: $model.runtimeSettings.defaultEventDurationMinutes)
-                        .textFieldStyle(.roundedBorder)
-                }
+                Section {
+                    DisclosureGroup("Action Defaults") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            TextField("Calendar Name", text: $model.runtimeSettings.calendarName)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Timezone", text: $model.runtimeSettings.timezone)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Default Event Duration (minutes)", text: $model.runtimeSettings.defaultEventDurationMinutes)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Request Timeout (seconds)", text: $model.runtimeSettings.requestTimeoutSeconds)
+                                .textFieldStyle(.roundedBorder)
 
-                Section("Notifications") {
-                    Toggle("Notify on success", isOn: $model.runtimeSettings.notifyOnSuccess)
-                    Toggle("Notify on failure", isOn: $model.runtimeSettings.notifyOnFailure)
-
-                    HStack {
-                        Button("Use Recommended Defaults") {
-                            model.applyRecommendedNotificationDefaults()
-                        }
-
-                        Spacer()
-                    }
-
-                    Text(model.notificationDefaultsSummary)
-                        .foregroundStyle(.secondary)
-
-                    Text("Direct Services now default to visible feedback on both success and failure so text actions do not feel silent the first time you use them.")
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Clipboard") {
-                    Toggle(
-                        "Enable clipboard history hotkey (\(model.clipboardHotkeyShortcutLabel))",
-                        isOn: Binding(
-                            get: { model.clipboardHotkeyEnabled },
-                            set: { model.setClipboardHotkeyEnabled($0) }
-                        )
-                    )
-
-                    HStack {
-                        Button(model.clipboardManager.isPaused ? "Resume Clipboard Capture" : "Pause Clipboard Capture") {
-                            model.toggleClipboardPause()
-                        }
-
-                        Button("Clear Last Clipboard Item") {
-                            model.clearMostRecentClipboardItem()
-                        }
-                        .disabled(model.filteredClipboardItems.isEmpty)
-
-                        Button("Open Clipboard History") {
-                            (NSApp.delegate as? AppDelegate)?.showClipboardHistory(nil)
-                        }
-
-                        Spacer()
-                    }
-
-                    Text("Clipboard history stays local to this Mac. Known password-manager sources are excluded by default, likely secrets are skipped, temporary clipboard changes must stay stable briefly before capture, oversized images are skipped, and you can pause capture at any time from the menu bar or the hotkey window.")
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Launch At Login") {
-                    Toggle(
-                        "Start RightClick AI automatically when I log in",
-                        isOn: Binding(
-                            get: { model.launchAtLoginEnabled },
-                            set: { model.setLaunchAtLoginEnabled($0) }
-                        )
-                    )
-
-                    HStack {
-                        Button("Refresh Launch Status") {
-                            model.refreshLaunchAtLoginStatus()
-                        }
-
-                        Spacer()
-                    }
-
-                    Text(model.launchAtLoginStatusMessage)
-                        .foregroundStyle(.secondary)
-                }
-
-                Section("Installed Actions") {
-                    if !model.coreActions.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(ActionTier.core.summary)
+                            Text("These defaults affect slower providers, relative dates, and calendar extraction when the selected text is incomplete.")
                                 .foregroundStyle(.secondary)
-
-                            ForEach(model.coreActions) { action in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(action.title)
-                                        .font(.headline)
-                                    Text(action.subtitle)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 2)
-                            }
                         }
+                        .padding(.vertical, 8)
                     }
+                }
 
-                    if !model.utilityActions.isEmpty {
-                        Divider()
+                Section {
+                    DisclosureGroup("Installed Actions") {
+                        VStack(alignment: .leading, spacing: 14) {
+                            if !model.coreActions.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(ActionTier.core.sectionTitle)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text(model.coreActions.map(\.title).joined(separator: "  ·  "))
+                                }
+                            }
 
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(ActionTier.utility.summary)
+                            if !model.utilityActions.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(ActionTier.utility.sectionTitle)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text(model.utilityActions.map(\.title).joined(separator: "  ·  "))
+                                }
+                            }
+
+                            HStack {
+                                Button("Open Actions Folder") {
+                                    model.openActionsDirectory()
+                                }
+
+                                Spacer()
+                            }
+
+                            Text("These actions appear in the RightClick AI window and, where supported, as direct Services from the text selection menu.")
                                 .foregroundStyle(.secondary)
-
-                            ForEach(model.utilityActions) { action in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(action.title)
-                                        .font(.headline)
-                                    Text(action.subtitle)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 2)
-                            }
                         }
+                        .padding(.vertical, 8)
                     }
-
-                    Text("These actions are available in the RightClick AI window and as direct Services where the host app supports them. The app keeps the core actions surfaced first, then leaves the smaller utilities available below them.")
-                        .foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -203,7 +199,7 @@ struct SettingsView: View {
             }
             .padding(20)
         }
-        .frame(width: 680, height: 860)
+        .frame(width: 680, height: 820)
     }
 
     @ViewBuilder
@@ -217,10 +213,16 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 TextField("Model", text: $model.runtimeSettings.openAIModel)
                     .textFieldStyle(.roundedBorder)
-                TextField("Auth Header", text: $model.runtimeSettings.openAIAuthHeader)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Auth Scheme", text: $model.runtimeSettings.openAIAuthScheme)
-                    .textFieldStyle(.roundedBorder)
+
+                DisclosureGroup("Advanced Provider Fields") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("Auth Header", text: $model.runtimeSettings.openAIAuthHeader)
+                            .textFieldStyle(.roundedBorder)
+                        TextField("Auth Scheme", text: $model.runtimeSettings.openAIAuthScheme)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .padding(.top, 8)
+                }
             }
         case "anthropic":
             VStack(alignment: .leading, spacing: 10) {
@@ -230,8 +232,14 @@ struct SettingsView: View {
                     .textFieldStyle(.roundedBorder)
                 TextField("Model", text: $model.runtimeSettings.anthropicModel)
                     .textFieldStyle(.roundedBorder)
-                TextField("API Version", text: $model.runtimeSettings.anthropicVersion)
-                    .textFieldStyle(.roundedBorder)
+
+                DisclosureGroup("Advanced Provider Fields") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("API Version", text: $model.runtimeSettings.anthropicVersion)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .padding(.top, 8)
+                }
             }
         case "gemini":
             VStack(alignment: .leading, spacing: 10) {

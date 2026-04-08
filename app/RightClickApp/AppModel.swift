@@ -156,6 +156,7 @@ final class AppModel: ObservableObject {
     @Published var settingsStatusTone: StatusTone = .neutral
     @Published var launchAtLoginEnabled = false
     @Published var launchAtLoginStatusMessage = "RightClick AI will not start automatically when you log in."
+    @Published var launchAtLoginStatusTone: StatusTone = .neutral
     @Published var runtimeRootPath: String {
         didSet {
             UserDefaults.standard.set(runtimeRootPath, forKey: Self.runtimeRootDefaultsKey)
@@ -773,6 +774,8 @@ final class AppModel: ObservableObject {
             launchAtLoginStatusMessage = "Launch at login status is unavailable right now."
             tone = .warning
         }
+
+        launchAtLoginStatusTone = tone
 
         if !initialLoad {
             setSettingsStatus(launchAtLoginStatusMessage, tone: tone)
