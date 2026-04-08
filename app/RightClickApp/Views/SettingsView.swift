@@ -116,6 +116,7 @@ struct SettingsView: View {
                                     Text(option.label).tag(option.id)
                                 }
                             }
+                            .pickerStyle(.menu)
 
                             TextField("Default Event Duration (minutes)", text: $model.runtimeSettings.defaultEventDurationMinutes)
                                 .textFieldStyle(.roundedBorder)
