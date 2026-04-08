@@ -14,13 +14,12 @@ common_file="${install_root}/lib/runtime-common.sh"
 source "${common_file}"
 
 action_cli="${script_dir}/right-click-action"
-queue_root="${install_root}/queue/add-to-calendar"
+queue_root="${install_root}/queue/add-to-calendar-v2"
 pending_dir="${queue_root}/pending"
 processing_dir="${queue_root}/processing"
 failed_dir="${queue_root}/failed"
 lock_dir="${queue_root}/drain.lock"
 queue_enabled="${RCA_CALENDAR_QUEUE_ENABLED:-1}"
-queue_auto_drain="${RCA_CALENDAR_QUEUE_AUTO_DRAIN:-1}"
 
 usage() {
   cat <<'USAGE'
@@ -83,15 +82,8 @@ enqueue_job() {
   printf '%s\n' "${job_file}"
 }
 
-spawn_queue_worker() {
-  if ! rc_is_true "${queue_auto_drain}"; then
-    return 0
-  fi
-
-  /usr/bin/nohup "${0}" --process-queue </dev/null >/dev/null 2>&1 &
-}
-
 drain_queue() {
+  local pending_jobs=()
   local pending_job=""
   local processing_job=""
 
@@ -101,7 +93,10 @@ drain_queue() {
   fi
   trap 'rmdir "${lock_dir}" 2>/dev/null || true' EXIT
 
-  for pending_job in "${pending_dir}"/*.txt(N); do
+  while true; do
+    pending_jobs=("${pending_dir}"/*.txt(N))
+    (( ${#pending_jobs[@]} > 0 )) || break
+    pending_job="${pending_jobs[1]}"
     [[ -f "${pending_job}" ]] || continue
     processing_job="${processing_dir}/${pending_job:t}"
 
@@ -180,4 +175,4 @@ if [[ -z "${input_text}" ]]; then
 fi
 
 enqueue_job "${input_text}" >/dev/null
-spawn_queue_worker
+drain_queue
