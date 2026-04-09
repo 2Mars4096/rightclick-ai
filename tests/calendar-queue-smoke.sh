@@ -26,7 +26,13 @@ chmod +x "${test_root}/bin/right-click-calendar" "${test_root}/bin/right-click-a
 export RCA_FAKE_ACTION_LOG="${log_file}"
 
 printf 'first event' | "${test_root}/bin/right-click-calendar" --enqueue
+[[ -f "$(find "${test_root}/queue/add-to-calendar-v2/pending" -type f | head -n 1)" ]]
+[[ ! -f "${log_file}" ]]
+
 printf 'second event' | "${test_root}/bin/right-click-calendar" --enqueue
+[[ "$(find "${test_root}/queue/add-to-calendar-v2/pending" -type f | wc -l | tr -d ' ')" == "2" ]]
+[[ ! -f "${log_file}" ]]
+
 "${test_root}/bin/right-click-calendar" --process-queue
 
 [[ -z "$(find "${test_root}/queue/add-to-calendar-v2/pending" -type f -print -quit)" ]]
