@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEFAULT_APP_BUNDLE="${REPO_ROOT}/build/RightClickApp.app"
+DEFAULT_APP_BUNDLE="${REPO_ROOT}/build.noindex/RightClickApp.app"
 BUILD_SCRIPT="${REPO_ROOT}/scripts/build-native-app.sh"
 APP_BUNDLE="${RCA_APP_BUNDLE:-${DEFAULT_APP_BUNDLE}}"
 BUILD_IF_MISSING="${RCA_BUILD_IF_MISSING:-0}"

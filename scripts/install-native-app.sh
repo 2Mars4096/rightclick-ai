@@ -11,7 +11,7 @@ BUILD_BEFORE_INSTALL="${RCA_BUILD_BEFORE_INSTALL:-1}"
 SKIP_PBS_UPDATE="${RCA_SKIP_PBS:-0}"
 OPEN_APP_AFTER_INSTALL="${RCA_OPEN_APP_AFTER_INSTALL:-1}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DEFAULT_APP_BUNDLE="${REPO_ROOT}/build/RightClickApp.app"
+DEFAULT_APP_BUNDLE="${REPO_ROOT}/build.noindex/RightClickApp.app"
 BUILD_SCRIPT="${REPO_ROOT}/scripts/build-native-app.sh"
 
 fail() {
@@ -108,6 +108,7 @@ if [[ "${INSTALL_ACTION_SERVICE_WORKFLOWS}" != "1" && "${REMOVE_DIRECT_CALENDAR_
 fi
 
 if [[ "${SKIP_PBS_UPDATE}" != "1" ]]; then
+  /System/Library/CoreServices/pbs -flush >/dev/null 2>&1 || true
   /System/Library/CoreServices/pbs -update >/dev/null 2>&1 || true
 fi
 
