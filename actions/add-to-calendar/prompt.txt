@@ -26,10 +26,22 @@ Return only valid JSON in this shape:
 
 Rules:
 - If the text has no schedulable event, return {"events":[],"reason":"short explanation"}.
-- If the selected text contains multiple non-empty lines, treat each non-empty line as a separate candidate event.
+- First identify candidate events or event groups, then expand dates inside each candidate independently.
+- A candidate event may be a line, bullet, paragraph, agenda item, table row, course row, or other coherent text block.
+- If the selected text is a table or table fragment, reconstruct complete rows before extracting events. This table rule overrides the separate-line rule.
+- In table fragments, infer row boundaries from repeated row numbers, course numbers, or repeated column order such as visitor, title, planned lecture dates, and topic.
+- Treat each complete table row as a separate candidate event even when the row wraps across multiple text lines.
+- If the selected text is not a table, treat each non-empty line as a separate candidate event.
 - Preserve the original line order in the output events array.
 - Do not merge separate lines into one event unless a single line clearly describes multiple events.
 - Blank lines are separators only. Ignore them.
+- If one candidate event lists multiple dates that share the same title and time range, expand it into one event object per date.
+- Never put multiple dates inside one start, end, date, or dates field. The events array must contain the repeated events separately.
+- When multiple candidates each list multiple dates, expand every candidate independently. For example, two candidates with six dates each must produce twelve event objects, preserving all events from the first candidate before all events from the second candidate.
+- If the selection mixes single-date and multi-date candidates, output the sum of all occurrences. For example, one single-date event plus one six-date event plus another single-date event must produce eight event objects.
+- Pair each candidate's dates and time range only with that candidate's title, topic, location, and notes. Do not combine date lists, titles, or topics across candidates.
+- For date lists like "May 27, 28, 29, June 1, 3, 5", carry the most recent month forward for bare day numbers.
+- For course or lecture schedules, use the topic or course title as the event title and put the visitor, affiliation, course number, and other useful row details in notes.
 - If a date is present but no time is present, use an all-day event.
 - For all-day events, use YYYY-MM-DD for start and end, and make end the day after the last covered day.
 - If the text does not specify a timezone, use the current local timezone.

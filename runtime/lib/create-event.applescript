@@ -67,12 +67,10 @@ on run argv
 
     set startDate to my parseNormalizedDate(startText)
     set endDate to my parseNormalizedDate(endText)
+    set isAllDay to (allDayFlag is "1")
 
     tell targetCalendar
-      set newEvent to make new event with properties {summary:eventTitle, start date:startDate, end date:endDate}
-      if eventLocation is not "" then set location of newEvent to eventLocation
-      if eventNotes is not "" then set description of newEvent to eventNotes
-      if allDayFlag is "1" then set allday event of newEvent to true
+      make new event with properties {summary:eventTitle, start date:startDate, end date:endDate, location:eventLocation, description:eventNotes, allday event:isAllDay}
     end tell
   end tell
 

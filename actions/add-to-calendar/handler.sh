@@ -14,7 +14,7 @@ normalized_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-normalized-events.XXXXXX")"
 handler_error_tmp="$(mktemp "${TMPDIR:-/tmp}/rc-handler-error.XXXXXX")"
 trap 'rm -f "${normalized_tmp}" "${handler_error_tmp}"' EXIT
 
-if ! "${jxa[@]}" normalize-events "${RC_ACTION_RAW_CONTENT_FILE}" "${default_event_duration_minutes}" > "${normalized_tmp}" 2> "${handler_error_tmp}"; then
+if ! "${jxa[@]}" normalize-events "${RC_ACTION_RAW_CONTENT_FILE}" "${default_event_duration_minutes}" "${RC_ACTION_CURRENT_DATETIME:-}" > "${normalized_tmp}" 2> "${handler_error_tmp}"; then
   error_message="$(rc_trim_whitespace "$(<"${handler_error_tmp}")")"
   if [[ -z "${error_message}" ]]; then
     error_message="The model returned data that could not be turned into events."
