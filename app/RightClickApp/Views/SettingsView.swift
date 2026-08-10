@@ -3,44 +3,56 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: AppModel
 
-    private let settingsLabelWidth: CGFloat = 190
-
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
-                settingsHeaderCard
-                generalCard
-                providerCard
-                actionDefaultsCard
-                installedActionsCard
-                storageCard
+        VStack(alignment: .leading, spacing: 0) {
+            settingsHeaderCard
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    providerCard
+                    generalCard
+                    actionDefaultsCard
+                    paperLibraryCard
+                    installedActionsCard
+                    storageCard
+                }
+                .padding(20)
             }
-            .padding(20)
         }
         .background(Color(NSColor.windowBackgroundColor))
         .frame(width: 720, height: 820)
+        .tint(Color(nsColor: .systemOrange))
     }
 
     private var settingsHeaderCard: some View {
-        SettingsCard(
-            title: "RightClick AI Settings",
-            subtitle: "Set up your provider once, then let RightClick AI stay in the background as a Mac utility."
-        ) {
-            VStack(alignment: .leading, spacing: 14) {
-                settingsActionRow {
-                    Button("Save Settings") {
-                        model.saveRuntimeSettings()
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button("Reload From Disk") {
-                        model.reloadRuntimeSettings()
-                    }
-                    .buttonStyle(.bordered)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Settings")
+                        .font(.title2.weight(.semibold))
+                    Text("Configure once, then keep RightClick AI ready in the background.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
-                StatusBanner(message: model.settingsStatusMessage, tone: model.settingsStatusTone)
+                Spacer()
+
+                Button("Reload") {
+                    model.reloadRuntimeSettings()
+                }
+
+                Button("Save") {
+                    model.saveRuntimeSettings()
+                }
+                .buttonStyle(PrimaryActionButtonStyle())
+                .keyboardShortcut("s", modifiers: .command)
             }
+
+            StatusBanner(message: model.settingsStatusMessage, tone: model.settingsStatusTone)
         }
     }
 
@@ -63,14 +75,9 @@ struct SettingsView: View {
                             )
                         )
 
-                        settingsActionRow {
-                            Button("Refresh Startup Status") {
-                                model.refreshLaunchAtLoginStatus()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        StatusBanner(message: model.launchAtLoginStatusMessage, tone: model.launchAtLoginStatusTone)
+                        Label(model.launchAtLoginStatusMessage, systemImage: model.launchAtLoginEnabled ? "checkmark.circle.fill" : "circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -116,14 +123,8 @@ struct SettingsView: View {
                         Toggle("Notify on success", isOn: $model.runtimeSettings.notifyOnSuccess)
                         Toggle("Notify on failure", isOn: $model.runtimeSettings.notifyOnFailure)
 
-                        settingsActionRow {
-                            Button("Use Recommended Defaults") {
-                                model.applyRecommendedNotificationDefaults()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
                         Text(model.notificationDefaultsSummary)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -148,6 +149,58 @@ struct SettingsView: View {
                 }
 
                 activeProviderFields
+            }
+        }
+    }
+
+    private var paperLibraryCard: some View {
+        SettingsCard(
+            title: "Paper Library",
+            subtitle: "Import a copied BibTeX entry plus a copied PDF reference into your knowledge base."
+        ) {
+            SettingsStack {
+                settingsRow("Knowledge Base Root", detail: "Used when importing papers from the clipboard workspace.") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        TextField("/Volumes/data/Dropbox/Projects/my-knowledge-base", text: $model.paperKnowledgeBaseRootPath)
+                            .textFieldStyle(.roundedBorder)
+
+                        settingsActionRow {
+                            Button("Use Default") {
+                                model.resetPaperKnowledgeBaseRootPath()
+                            }
+
+                            Menu("Open") {
+                                Button("Knowledge Base Root") {
+                                    model.openPaperKnowledgeBaseRootDirectory()
+                                }
+
+                                Button("Paper Pages") {
+                                    model.openPaperKnowledgeBaseContentPapersDirectory()
+                                }
+
+                                Button("Paper PDFs") {
+                                    model.openPaperKnowledgeBaseStaticPapersDirectory()
+                                }
+                            }
+                        }
+
+                        Text("Paper import expects `content/papers/<citationKey>/index.md` and `static/papers/<citationKey>.pdf` under this root.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                settingsRow("Paper Pages", detail: "Markdown pages created for imported papers.") {
+                    runtimePathValue(model.paperKnowledgeBaseContentPapersPath)
+                }
+
+                Divider()
+
+                settingsRow("Paper PDFs", detail: "Canonical PDFs named by citation key.") {
+                    runtimePathValue(model.paperKnowledgeBaseStaticPapersPath)
+                }
             }
         }
     }
@@ -241,7 +294,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsRow("settings.env", detail: "Provider defaults and non-secret runtime settings.") {
+                settingsRow("settings.env", detail: "Provider defaults, runtime settings, and user-only provider keys.") {
                     runtimePathValue(model.runtimeSettingsPath)
                 }
 
@@ -303,10 +356,6 @@ struct SettingsView: View {
                                 runtimePathValue(model.runtimeExecutablePath)
                             }
 
-                            settingsInlineField("Keychain Service") {
-                                runtimePathValue(model.runtimeKeychainServiceName)
-                            }
-
                             Text("Normal installs should leave this on the Application Support location above.")
                                 .foregroundStyle(.secondary)
                         }
@@ -331,7 +380,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsRow("API Key", detail: "Stored in Keychain when you save settings.") {
+                settingsRow("API Key", detail: "Stored in Keychain and mirrored to private runtime settings for direct Services.") {
                     SecureField("Required", text: $model.runtimeSettings.openAIAPIKey)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -373,7 +422,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsRow("API Key", detail: "Stored in Keychain when you save settings.") {
+                settingsRow("API Key", detail: "Stored in Keychain and mirrored to private runtime settings for direct Services.") {
                     SecureField("Required", text: $model.runtimeSettings.anthropicAPIKey)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -410,7 +459,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsRow("API Key", detail: "Stored in Keychain when you save settings.") {
+                settingsRow("API Key", detail: "Stored in Keychain and mirrored to private runtime settings for direct Services.") {
                     SecureField("Required", text: $model.runtimeSettings.geminiAPIKey)
                         .textFieldStyle(.roundedBorder)
                 }
@@ -480,7 +529,7 @@ struct SettingsView: View {
     }
 
     private func settingsRow<Content: View>(_ title: String, detail: String? = nil, @ViewBuilder content: () -> Content) -> some View {
-        HStack(alignment: .top, spacing: 22) {
+        VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                     .font(.caption.weight(.semibold))
@@ -492,11 +541,11 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: settingsLabelWidth, alignment: .leading)
-
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func settingsInlineField<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -561,14 +610,12 @@ private struct SettingsCard<Content: View>: View {
 
             content()
         }
-        .padding(18)
+        .padding(.horizontal, 2)
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(NSColor.controlBackgroundColor))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 }
 

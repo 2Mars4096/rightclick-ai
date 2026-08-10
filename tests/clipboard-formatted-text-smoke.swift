@@ -24,6 +24,13 @@ struct ClipboardFormattedTextSmoke {
             minimumStableMonitoringDuration: 60
         )
 
+        pasteboard.clearContents()
+        guard pasteboard.setString("RightClick AI pasteboard probe", forType: .string) else {
+            print("Clipboard formatted text smoke skipped: the macOS pasteboard server is unavailable in this test environment.")
+            return
+        }
+        pasteboard.clearContents()
+
         defer {
             try? FileManager.default.removeItem(at: buildRoot)
             pasteboard.clearContents()

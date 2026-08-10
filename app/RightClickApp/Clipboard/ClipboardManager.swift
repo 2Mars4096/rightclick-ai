@@ -34,8 +34,8 @@ final class ClipboardManager: ObservableObject {
         historyStore: ClipboardHistoryStore = ClipboardHistoryStore(),
         privacyPolicy: ClipboardPrivacyPolicy = .standard,
         pasteboard: NSPasteboard = .general,
-        monitoringInterval: TimeInterval = 0.5,
-        minimumStableMonitoringDuration: TimeInterval = 1.5
+        monitoringInterval: TimeInterval = 0.1,
+        minimumStableMonitoringDuration: TimeInterval = 0.25
     ) {
         self.historyStore = historyStore
         self.privacyPolicy = privacyPolicy

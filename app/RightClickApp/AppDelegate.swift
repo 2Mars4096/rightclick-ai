@@ -126,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "RightClick AI")
+            button.image = NSImage(systemSymbolName: "cursorarrow.click.2", accessibilityDescription: "RightClick AI")
             button.toolTip = "RightClick AI"
         }
 
@@ -230,11 +230,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.center()
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
+        window.collectionBehavior.insert(.moveToActiveSpace)
         return NSWindowController(window: window)
     }
 
     private func presentWindow(_ windowController: NSWindowController?) {
         windowController?.showWindow(nil)
+        windowController?.window?.orderFrontRegardless()
         windowController?.window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

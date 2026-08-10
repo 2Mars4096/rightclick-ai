@@ -7,7 +7,7 @@ extension Notification.Name {
     static let rightClickClipboardHotKeyPreferenceDidChange = Notification.Name("RightClickAI.clipboardHotKeyPreferenceDidChange")
 }
 
-struct ActionDescriptor: Identifiable, Hashable {
+struct ActionDescriptor: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
     let subtitle: String
@@ -66,14 +66,14 @@ enum ActionTier: String {
     }
 }
 
-struct RuntimeRequest {
+struct RuntimeRequest: Sendable {
     let selectedText: String
     let actionID: String
     let actionTitle: String
     let userInstruction: String?
 }
 
-struct RuntimeEventDraft: Identifiable, Equatable {
+struct RuntimeEventDraft: Identifiable, Equatable, Sendable {
     let id: String
     let title: String
     let start: String
@@ -84,13 +84,13 @@ struct RuntimeEventDraft: Identifiable, Equatable {
     let calendar: String
 }
 
-enum RuntimePreviewContent: Equatable {
+enum RuntimePreviewContent: Equatable, Sendable {
     case text(String)
     case rewriteDiff(original: String, rewritten: String)
     case eventDrafts(reason: String, events: [RuntimeEventDraft])
 }
 
-struct RuntimePreview: Equatable {
+struct RuntimePreview: Equatable, Sendable {
     let title: String
     let summary: String
     let proposedOutput: String
@@ -134,18 +134,39 @@ enum StatusTone: String {
 @MainActor
 final class AppModel: ObservableObject {
     private static let runtimeRootDefaultsKey = "rightClick.runtimeRootPath"
+    private static let paperKnowledgeBaseRootDefaultsKey = "rightClick.paperKnowledgeBaseRootPath"
     private static let workspaceModeDefaultsKey = "rightClick.workspaceMode"
     private static let clipboardHotkeyEnabledDefaultsKey = "rightClick.clipboardHotkeyEnabled"
     static let defaultRuntimeRootPath = "~/Library/Application Support/RightClickAI"
+    static let defaultPaperKnowledgeBaseRootPath = "/Volumes/data/Dropbox/Projects/my-knowledge-base"
     private static let legacyRuntimeRootPath = "~/Library/Application Support/RightClickCalendar"
+    private static let legacyPaperKnowledgeBaseRootPath = "~/Dropbox/Projects/my-knowledge-base"
 
     static let shared = AppModel(runtimeBridge: InstalledRuntimeBridge())
 
     let clipboardManager: ClipboardManager
 
-    @Published var selectedText = ""
-    @Published var selectedActionID = ""
-    @Published var userInstruction = ""
+    @Published var selectedText = "" {
+        didSet {
+            if selectedText != oldValue {
+                invalidatePreparedResult()
+            }
+        }
+    }
+    @Published var selectedActionID = "" {
+        didSet {
+            if selectedActionID != oldValue {
+                invalidatePreparedResult()
+            }
+        }
+    }
+    @Published var userInstruction = "" {
+        didSet {
+            if userInstruction != oldValue {
+                invalidatePreparedResult()
+            }
+        }
+    }
     @Published var availableActions: [ActionDescriptor]
     @Published var preview: RuntimePreview?
     @Published var statusMessage = "Use the RightClick AI service on selected text to start a run."
@@ -154,12 +175,19 @@ final class AppModel: ObservableObject {
     @Published var runtimeSettings = RuntimeSettingsDocument()
     @Published var settingsStatusMessage = "Load or create a runtime settings file from the native Settings window."
     @Published var settingsStatusTone: StatusTone = .neutral
+    @Published private(set) var isPreparingPreview = false
+    @Published private(set) var isApplyingPreview = false
     @Published var launchAtLoginEnabled = false
     @Published var launchAtLoginStatusMessage = "RightClick AI will not start automatically when you log in."
     @Published var launchAtLoginStatusTone: StatusTone = .neutral
     @Published var runtimeRootPath: String {
         didSet {
             UserDefaults.standard.set(runtimeRootPath, forKey: Self.runtimeRootDefaultsKey)
+        }
+    }
+    @Published var paperKnowledgeBaseRootPath: String {
+        didSet {
+            UserDefaults.standard.set(paperKnowledgeBaseRootPath, forKey: Self.paperKnowledgeBaseRootDefaultsKey)
         }
     }
     @Published var activeWorkspaceMode: WorkspaceMode {
@@ -172,7 +200,11 @@ final class AppModel: ObservableObject {
             reconcileClipboardSelection()
         }
     }
-    @Published var selectedClipboardItemID: ClipboardItem.ID?
+    @Published var selectedClipboardItemIDs: Set<ClipboardItem.ID> = [] {
+        didSet {
+            reconcileClipboardSelection()
+        }
+    }
     @Published var clipboardHotkeyEnabled: Bool {
         didSet {
             UserDefaults.standard.set(clipboardHotkeyEnabled, forKey: Self.clipboardHotkeyEnabledDefaultsKey)
@@ -182,14 +214,22 @@ final class AppModel: ObservableObject {
 
     private let runtimeBridge: any RuntimeBridge
     private var cancellables: Set<AnyCancellable> = []
+    private var previewTask: Task<Void, Never>?
+    private var applyTask: Task<Void, Never>?
+    private var previewRequestID = UUID()
+
+    convenience init(runtimeBridge: any RuntimeBridge) {
+        self.init(runtimeBridge: runtimeBridge, clipboardManager: ClipboardManager())
+    }
 
     init(
         runtimeBridge: any RuntimeBridge,
-        clipboardManager: ClipboardManager = ClipboardManager()
+        clipboardManager: ClipboardManager
     ) {
         self.runtimeBridge = runtimeBridge
         self.clipboardManager = clipboardManager
         runtimeRootPath = Self.initialRuntimeRootPath()
+        paperKnowledgeBaseRootPath = Self.initialPaperKnowledgeBaseRootPath()
         activeWorkspaceMode = Self.initialWorkspaceMode()
         clipboardHotkeyEnabled = Self.initialClipboardHotkeyEnabled()
         availableActions = []
@@ -225,6 +265,49 @@ final class AppModel: ObservableObject {
         runtimeConfiguration.keychainServiceName
     }
 
+    var paperKnowledgeBaseConfiguration: PaperKnowledgeBaseConfiguration {
+        PaperKnowledgeBaseConfiguration(rootPath: paperKnowledgeBaseRootPath)
+    }
+
+    var paperKnowledgeBaseExpandedRootPath: String {
+        paperKnowledgeBaseConfiguration.expandedRootPath
+    }
+
+    var paperKnowledgeBaseContentPapersPath: String {
+        paperKnowledgeBaseConfiguration.contentPapersDirectoryURL?.path
+            ?? paperKnowledgeBaseExpandedRootPath + "/content/papers"
+    }
+
+    var paperKnowledgeBaseStaticPapersPath: String {
+        paperKnowledgeBaseConfiguration.staticPapersDirectoryURL?.path
+            ?? paperKnowledgeBaseExpandedRootPath + "/static/papers"
+    }
+
+    var paperImportAnalysis: ClipboardPaperImportAnalysis {
+        ClipboardPaperImportAnalyzer.analyze(
+            items: selectedClipboardItems,
+            configuration: paperKnowledgeBaseConfiguration
+        )
+    }
+
+    var selectedPaperImportProposal: ClipboardPaperImportProposal? {
+        paperImportAnalysis.proposal
+    }
+
+    var canImportSelectedClipboardItemsAsPaper: Bool {
+        selectedPaperImportProposal != nil
+    }
+
+    var showsPaperImportControls: Bool {
+        selectedClipboardItems.contains { item in
+            item.paperBibliographyEntry != nil || !item.paperPDFCandidateURLs.isEmpty
+        }
+    }
+
+    var paperImportSelectionSummary: String {
+        paperImportAnalysis.message
+    }
+
     var selectedProviderTitle: String {
         RuntimeProviderOption.title(for: runtimeSettings.provider)
     }
@@ -245,16 +328,26 @@ final class AppModel: ObservableObject {
         clipboardManager.search(query: clipboardSearchQuery)
     }
 
-    var selectedClipboardItem: ClipboardItem? {
-        guard let selectedClipboardItemID else {
-            return filteredClipboardItems.first
+    var selectedClipboardItems: [ClipboardItem] {
+        let matchingItems = filteredClipboardItems.filter { selectedClipboardItemIDs.contains($0.id) }
+        if !matchingItems.isEmpty {
+            return matchingItems
         }
 
-        return clipboardManager.item(withID: selectedClipboardItemID)
+        if let firstVisibleItem = filteredClipboardItems.first {
+            return [firstVisibleItem]
+        }
+
+        return []
+    }
+
+    var selectedClipboardItem: ClipboardItem? {
+        selectedClipboardItems.first
     }
 
     var selectedClipboardCompatibilities: [ClipboardActionCompatibility] {
-        guard let itemID = selectedClipboardItem?.id else {
+        guard selectedClipboardItems.count == 1,
+              let itemID = selectedClipboardItem?.id else {
             return []
         }
 
@@ -293,16 +386,53 @@ final class AppModel: ObservableObject {
         return "Showing \(filteredClipboardItems.count) saved clipboard item(s)."
     }
 
+    var selectedClipboardItemCount: Int {
+        selectedClipboardItems.count
+    }
+
+    var hasMultipleSelectedClipboardItems: Bool {
+        selectedClipboardItems.count > 1
+    }
+
+    var combinedSelectedClipboardText: String? {
+        ClipboardSelectionComposer.compose(items: selectedClipboardItems)?.text
+    }
+
+    var selectedClipboardReviewSummary: String {
+        let selectedCount = selectedClipboardItems.count
+        guard selectedCount > 0 else {
+            return "Choose one or more saved clipboard items to review."
+        }
+
+        if canUseSelectedClipboardItemsInReview {
+            if selectedCount == 1 {
+                return "This clipboard item can be loaded into review."
+            }
+
+            return "These \(selectedCount) clipboard items will be combined into one review input."
+        }
+
+        return "Only text, rich text, HTML, URLs, and file references can be combined into review right now."
+    }
+
+    var canUseSelectedClipboardItemsInReview: Bool {
+        guard !selectedClipboardItems.isEmpty else {
+            return false
+        }
+
+        return combinedSelectedClipboardText != nil
+    }
+
     var canUseSelectedClipboardItemInReview: Bool {
-        selectedClipboardItem?.canRestoreAsText == true
+        selectedClipboardItems.count == 1 && canUseSelectedClipboardItemsInReview
     }
 
     var canRestoreSelectedClipboardItem: Bool {
-        selectedClipboardItem?.canRestore == true
+        selectedClipboardItems.count == 1 && selectedClipboardItem?.canRestore == true
     }
 
     var canOpenSelectedClipboardItem: Bool {
-        selectedClipboardItem?.canOpen == true
+        selectedClipboardItems.count == 1 && selectedClipboardItem?.canOpen == true
     }
 
     var needsProviderSetup: Bool {
@@ -321,7 +451,25 @@ final class AppModel: ObservableObject {
     }
 
     var canApplyPreview: Bool {
-        preview != nil
+        preview != nil && !isBusy
+    }
+
+    var canPreparePreview: Bool {
+        !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && selectedAction != nil
+            && !isBusy
+    }
+
+    var isBusy: Bool {
+        isPreparingPreview || isApplyingPreview
+    }
+
+    var runButtonTitle: String {
+        if isPreparingPreview {
+            return "Running…"
+        }
+
+        return selectedAction.map { "Run \($0.title)" } ?? "Run Action"
     }
 
     var supportsUserInstruction: Bool {
@@ -552,13 +700,58 @@ final class AppModel: ObservableObject {
         objectWillChange.send()
     }
 
-    func useSelectedClipboardItemInReview() {
-        guard let item = selectedClipboardItem else {
-            setStatus("Choose a clipboard item first.", tone: .warning)
+    func isClipboardItemSelected(_ itemID: ClipboardItem.ID) -> Bool {
+        selectedClipboardItemIDs.contains(itemID)
+    }
+
+    func selectOnlyClipboardItem(_ itemID: ClipboardItem.ID) {
+        selectedClipboardItemIDs = [itemID]
+        objectWillChange.send()
+    }
+
+    func toggleClipboardItemSelection(_ itemID: ClipboardItem.ID) {
+        var updatedSelection = selectedClipboardItemIDs
+        if updatedSelection.contains(itemID) {
+            if updatedSelection.count == 1 {
+                return
+            }
+
+            updatedSelection.remove(itemID)
+        } else {
+            updatedSelection.insert(itemID)
+        }
+
+        selectedClipboardItemIDs = updatedSelection
+        objectWillChange.send()
+    }
+
+    func useSelectedClipboardItemsInReview() {
+        let items = selectedClipboardItems
+        guard !items.isEmpty else {
+            setStatus("Choose one or more clipboard items first.", tone: .warning)
             return
         }
 
-        routeClipboardItemToReview(itemID: item.id)
+        if items.count == 1, let item = items.first {
+            routeClipboardItemToReview(itemID: item.id)
+            return
+        }
+
+        guard let composition = ClipboardSelectionComposer.compose(items: items) else {
+            setStatus("Only text, rich text, HTML, URLs, and file references can be combined into review right now.", tone: .warning)
+            return
+        }
+
+        selectedText = composition.text
+        launchSource = "Clipboard History (\(composition.itemCount) items)"
+        userInstruction = ""
+        preview = nil
+        activeWorkspaceMode = .selection
+        setStatus("Combined \(composition.itemCount) clipboard items into one review input.", tone: .success)
+    }
+
+    func useSelectedClipboardItemInReview() {
+        useSelectedClipboardItemsInReview()
     }
 
     func useClipboardItemInReview(_ itemID: ClipboardItem.ID) {
@@ -596,6 +789,10 @@ final class AppModel: ObservableObject {
     }
 
     func preparePreview() {
+        guard !isBusy else {
+            return
+        }
+
         let trimmedText = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
             setStatus("No selected text has been captured yet.", tone: .warning)
@@ -609,24 +806,54 @@ final class AppModel: ObservableObject {
             return
         }
 
-        do {
-            preview = try runtimeBridge.preparePreview(
-                for: RuntimeRequest(
-                    selectedText: trimmedText,
-                    actionID: selectedAction.id,
-                    actionTitle: selectedAction.title,
-                    userInstruction: normalizedUserInstruction
-                ),
-                configuration: runtimeConfiguration
-            )
-            setStatus("Prepared a runtime-backed review for \(selectedAction.title).", tone: .success)
-        } catch {
-            preview = nil
-            setStatus(error.localizedDescription, tone: .failure)
+        let request = RuntimeRequest(
+            selectedText: trimmedText,
+            actionID: selectedAction.id,
+            actionTitle: selectedAction.title,
+            userInstruction: normalizedUserInstruction
+        )
+        let configuration = runtimeConfiguration
+        let bridge = runtimeBridge
+        let requestID = UUID()
+
+        previewTask?.cancel()
+        previewRequestID = requestID
+        preview = nil
+        isPreparingPreview = true
+        setStatus("Running \(selectedAction.title)…")
+
+        previewTask = Task { [weak self] in
+            do {
+                let preparedPreview = try await Task.detached(priority: .userInitiated) {
+                    try bridge.preparePreview(for: request, configuration: configuration)
+                }.value
+
+                guard let self, self.previewRequestID == requestID, !Task.isCancelled else {
+                    return
+                }
+
+                self.preview = preparedPreview
+                self.isPreparingPreview = false
+                self.previewTask = nil
+                self.setStatus("\(selectedAction.title) is ready to review.", tone: .success)
+            } catch {
+                guard let self, self.previewRequestID == requestID, !Task.isCancelled else {
+                    return
+                }
+
+                self.preview = nil
+                self.isPreparingPreview = false
+                self.previewTask = nil
+                self.setStatus(error.localizedDescription, tone: .failure)
+            }
         }
     }
 
     func applyPreview() {
+        guard !isBusy else {
+            return
+        }
+
         guard let selectedAction else {
             setStatus("Choose an action before applying.", tone: .warning)
             return
@@ -644,27 +871,59 @@ final class AppModel: ObservableObject {
         }
 
         if selectedAction.id == "add-to-calendar" {
-            do {
-                try runtimeBridge.performAction(
-                    for: RuntimeRequest(
-                        selectedText: trimmedText,
-                        actionID: selectedAction.id,
-                        actionTitle: selectedAction.title,
-                        userInstruction: normalizedUserInstruction
-                    ),
-                    configuration: runtimeConfiguration
-                )
-                setStatus("Applied \(selectedAction.title) through the shared runtime.", tone: .success)
-            } catch {
-                setStatus(error.localizedDescription, tone: .failure)
+            let request = RuntimeRequest(
+                selectedText: trimmedText,
+                actionID: selectedAction.id,
+                actionTitle: selectedAction.title,
+                userInstruction: normalizedUserInstruction
+            )
+            let configuration = runtimeConfiguration
+            let bridge = runtimeBridge
+
+            isApplyingPreview = true
+            setStatus("Creating the reviewed calendar events…")
+
+            applyTask = Task { [weak self] in
+                do {
+                    try await Task.detached(priority: .userInitiated) {
+                        try bridge.performAction(for: request, preview: preview, configuration: configuration)
+                    }.value
+
+                    guard let self else {
+                        return
+                    }
+
+                    self.isApplyingPreview = false
+                    self.applyTask = nil
+                    self.setStatus("Created the reviewed calendar events.", tone: .success)
+                } catch {
+                    guard let self else {
+                        return
+                    }
+
+                    self.isApplyingPreview = false
+                    self.applyTask = nil
+                    self.setStatus(error.localizedDescription, tone: .failure)
+                }
             }
             return
         }
 
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(preview.proposedOutput, forType: .string)
+        guard pasteboard.setString(preview.proposedOutput, forType: .string) else {
+            setStatus("The result is ready, but macOS did not accept it on the clipboard. Try copying it from the result view.", tone: .failure)
+            return
+        }
         setStatus("Copied \(selectedAction.title) output to the clipboard.", tone: .success)
+    }
+
+    private func invalidatePreparedResult() {
+        previewRequestID = UUID()
+        previewTask?.cancel()
+        previewTask = nil
+        isPreparingPreview = false
+        preview = nil
     }
 
     func reloadActions(initialLoad: Bool = false) {
@@ -689,6 +948,11 @@ final class AppModel: ObservableObject {
         runtimeRootPath = Self.defaultRuntimeRootPath
         reloadActions()
         reloadRuntimeSettings()
+    }
+
+    func resetPaperKnowledgeBaseRootPath() {
+        paperKnowledgeBaseRootPath = Self.defaultPaperKnowledgeBaseRootPath
+        setSettingsStatus("Restored the default paper knowledge base root.", tone: .success)
     }
 
     func openRuntimeSettingsFile() {
@@ -721,9 +985,46 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
+    func openPaperKnowledgeBaseRootDirectory() {
+        openPaperKnowledgeBaseDirectory(
+            at: paperKnowledgeBaseExpandedRootPath,
+            missingMessage: "The paper knowledge base root does not exist yet at \(paperKnowledgeBaseExpandedRootPath)."
+        )
+    }
+
+    func openPaperKnowledgeBaseContentPapersDirectory() {
+        openPaperKnowledgeBaseDirectory(
+            at: paperKnowledgeBaseContentPapersPath,
+            missingMessage: "The paper content directory does not exist yet at \(paperKnowledgeBaseContentPapersPath)."
+        )
+    }
+
+    func openPaperKnowledgeBaseStaticPapersDirectory() {
+        openPaperKnowledgeBaseDirectory(
+            at: paperKnowledgeBaseStaticPapersPath,
+            missingMessage: "The paper PDF directory does not exist yet at \(paperKnowledgeBaseStaticPapersPath)."
+        )
+    }
+
     func reloadRuntimeSettings(initialLoad: Bool = false) {
         do {
             runtimeSettings = try RuntimeSettingsDocument.load(from: runtimeSettingsPath)
+            if initialLoad, runtimeSettings.loadedProviderSecretFromKeychain {
+                do {
+                    try runtimeSettings.write(to: runtimeSettingsPath, syncKeychain: false)
+                    setSettingsStatus(
+                        "Loaded provider secret from Keychain and mirrored it to \(runtimeSettingsPath) for direct Services."
+                    )
+                    return
+                } catch {
+                    setSettingsStatus(
+                        "Loaded runtime settings, but could not mirror provider secrets for direct Services: \(error.localizedDescription)",
+                        tone: .warning
+                    )
+                    return
+                }
+            }
+
             setSettingsStatus(
                 initialLoad
                     ? "Loaded runtime settings from \(runtimeSettingsPath)."
@@ -740,7 +1041,7 @@ final class AppModel: ObservableObject {
     func saveRuntimeSettings() {
         do {
             try runtimeSettings.write(to: runtimeSettingsPath)
-            setSettingsStatus("Saved runtime settings to \(runtimeSettingsPath) and synced provider secrets to Keychain.", tone: .success)
+            setSettingsStatus("Saved settings. Provider secrets are protected in Keychain and mirrored to the private runtime file for direct Services.", tone: .success)
         } catch {
             setSettingsStatus(error.localizedDescription, tone: .failure)
         }
@@ -750,6 +1051,23 @@ final class AppModel: ObservableObject {
         runtimeSettings.notifyOnSuccess = true
         runtimeSettings.notifyOnFailure = true
         setSettingsStatus("Notification defaults restored. Direct Services will notify on both success and failure.", tone: .success)
+    }
+
+    func importSelectedClipboardItemsAsPaper() {
+        guard let proposal = selectedPaperImportProposal else {
+            setStatus(paperImportSelectionSummary, tone: .warning)
+            return
+        }
+
+        do {
+            let result = try ClipboardPaperImporter.import(
+                proposal: proposal,
+                configuration: paperKnowledgeBaseConfiguration
+            )
+            setStatus(result.summary, tone: .success)
+        } catch {
+            setStatus(error.localizedDescription, tone: .failure)
+        }
     }
 
     func refreshLaunchAtLoginStatus(initialLoad: Bool = false) {
@@ -862,15 +1180,24 @@ final class AppModel: ObservableObject {
         settingsStatusTone = tone
     }
 
-    private func reconcileClipboardSelection() {
-        let visibleItemIDs = Set(filteredClipboardItems.map(\.id))
-        guard let selectedClipboardItemID else {
-            self.selectedClipboardItemID = filteredClipboardItems.first?.id
+    private func openPaperKnowledgeBaseDirectory(at path: String, missingMessage: String) {
+        guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else {
+            setSettingsStatus(missingMessage, tone: .failure)
             return
         }
 
-        if !visibleItemIDs.contains(selectedClipboardItemID) {
-            self.selectedClipboardItemID = filteredClipboardItems.first?.id
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    private func reconcileClipboardSelection() {
+        let visibleItemIDs = Set(filteredClipboardItems.map(\.id))
+        var reconciledSelection = selectedClipboardItemIDs.intersection(visibleItemIDs)
+        if reconciledSelection.isEmpty, let firstVisibleItem = filteredClipboardItems.first {
+            reconciledSelection = [firstVisibleItem.id]
+        }
+
+        if reconciledSelection != selectedClipboardItemIDs {
+            selectedClipboardItemIDs = reconciledSelection
         }
     }
 
@@ -903,6 +1230,25 @@ final class AppModel: ObservableObject {
         }
 
         return defaultRuntimeRootPath
+    }
+
+    private static func initialPaperKnowledgeBaseRootPath() -> String {
+        if let savedPath = UserDefaults.standard.string(forKey: paperKnowledgeBaseRootDefaultsKey) {
+            return savedPath
+        }
+
+        let fileManager = FileManager.default
+        let preferredPath = (defaultPaperKnowledgeBaseRootPath as NSString).expandingTildeInPath
+        if fileManager.fileExists(atPath: preferredPath) {
+            return defaultPaperKnowledgeBaseRootPath
+        }
+
+        let legacyPath = (legacyPaperKnowledgeBaseRootPath as NSString).expandingTildeInPath
+        if fileManager.fileExists(atPath: legacyPath) {
+            return legacyPaperKnowledgeBaseRootPath
+        }
+
+        return defaultPaperKnowledgeBaseRootPath
     }
 
     private static func initialWorkspaceMode() -> WorkspaceMode {

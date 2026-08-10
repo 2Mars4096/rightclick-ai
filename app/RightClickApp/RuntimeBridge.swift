@@ -1,13 +1,13 @@
 import Foundation
 import Security
 
-protocol RuntimeBridge {
+protocol RuntimeBridge: Sendable {
     func availableActions(configuration: RuntimeConfiguration) throws -> [ActionDescriptor]
     func preparePreview(for request: RuntimeRequest, configuration: RuntimeConfiguration) throws -> RuntimePreview
-    func performAction(for request: RuntimeRequest, configuration: RuntimeConfiguration) throws
+    func performAction(for request: RuntimeRequest, preview: RuntimePreview, configuration: RuntimeConfiguration) throws
 }
 
-struct RuntimeConfiguration {
+struct RuntimeConfiguration: Sendable {
     let runtimeRootPath: String
 
     var expandedRuntimeRootPath: String {
@@ -180,6 +180,13 @@ struct RuntimeSettingsDocument: Equatable {
 
     var customProviderCommand = ""
     var additionalEntries: [String: String] = [:]
+    var loadedProviderSecretFromKeychain = false
+
+    var hasAnyProviderSecret: Bool {
+        !openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !geminiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     static func load(from path: String) throws -> RuntimeSettingsDocument {
         guard FileManager.default.fileExists(atPath: path) else {
@@ -197,18 +204,20 @@ struct RuntimeSettingsDocument: Equatable {
             }
             document.apply(value: entry.value, for: entry.key)
         }
-        try document.loadSecrets(using: keychainStore(for: path))
         return document
     }
 
-    func write(to path: String) throws {
+    func write(to path: String, syncKeychain: Bool = false) throws {
         let url = URL(fileURLWithPath: path)
-        try persistSecrets(using: Self.keychainStore(for: path))
+        if syncKeychain {
+            try? persistSecrets(using: Self.keychainStore(for: path))
+        }
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         try render().write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
     }
 
     private mutating func apply(value: String, for key: String) {
@@ -273,22 +282,23 @@ struct RuntimeSettingsDocument: Equatable {
             "NOTIFY_ON_FAILURE=\(Self.quote(Self.boolString(notifyOnFailure)))",
             "",
             "# OpenAI-compatible providers",
-            "# API keys are loaded from Keychain when the native app saves settings.",
+            "# API keys are mirrored here so direct Services can run without Keychain prompts.",
+            "# The native app also stores them in Keychain when settings are saved.",
             "OPENAI_API_URL=\(Self.quote(openAIAPIURL))",
-            "OPENAI_API_KEY=\(Self.quote(""))",
+            "OPENAI_API_KEY=\(Self.quote(openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)))",
             "OPENAI_MODEL=\(Self.quote(openAIModel))",
             "OPENAI_AUTH_HEADER=\(Self.quote(openAIAuthHeader))",
             "OPENAI_AUTH_SCHEME=\(Self.quote(openAIAuthScheme))",
             "",
             "# Anthropic",
             "ANTHROPIC_API_URL=\(Self.quote(anthropicAPIURL))",
-            "ANTHROPIC_API_KEY=\(Self.quote(""))",
+            "ANTHROPIC_API_KEY=\(Self.quote(anthropicAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)))",
             "ANTHROPIC_MODEL=\(Self.quote(anthropicModel))",
             "ANTHROPIC_VERSION=\(Self.quote(anthropicVersion))",
             "",
             "# Gemini",
             "GEMINI_API_URL=\(Self.quote(geminiAPIURL))",
-            "GEMINI_API_KEY=\(Self.quote(""))",
+            "GEMINI_API_KEY=\(Self.quote(geminiAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)))",
             "GEMINI_MODEL=\(Self.quote(geminiModel))",
             "",
             "# Custom provider",
@@ -310,9 +320,29 @@ struct RuntimeSettingsDocument: Equatable {
     }
 
     private mutating func loadSecrets(using keychainStore: RuntimeKeychainStore) throws {
-        openAIAPIKey = try keychainStore.readSecret(account: Self.openAISecretAccount) ?? openAIAPIKey
-        anthropicAPIKey = try keychainStore.readSecret(account: Self.anthropicSecretAccount) ?? anthropicAPIKey
-        geminiAPIKey = try keychainStore.readSecret(account: Self.geminiSecretAccount) ?? geminiAPIKey
+        guard !hasAnyProviderSecret else {
+            return
+        }
+
+        switch provider {
+        case "openai_compatible":
+            if let secret = try keychainStore.readSecret(account: Self.openAISecretAccount) {
+                openAIAPIKey = secret
+                loadedProviderSecretFromKeychain = true
+            }
+        case "anthropic":
+            if let secret = try keychainStore.readSecret(account: Self.anthropicSecretAccount) {
+                anthropicAPIKey = secret
+                loadedProviderSecretFromKeychain = true
+            }
+        case "gemini":
+            if let secret = try keychainStore.readSecret(account: Self.geminiSecretAccount) {
+                geminiAPIKey = secret
+                loadedProviderSecretFromKeychain = true
+            }
+        default:
+            return
+        }
     }
 
     private func persistSecrets(using keychainStore: RuntimeKeychainStore) throws {
@@ -497,8 +527,10 @@ struct InstalledRuntimeBridge: RuntimeBridge {
         )
     }
 
-    func performAction(for request: RuntimeRequest, configuration: RuntimeConfiguration) throws {
-        var arguments = [request.actionID]
+    func performAction(for request: RuntimeRequest, preview: RuntimePreview, configuration: RuntimeConfiguration) throws {
+        var arguments = request.actionID == "add-to-calendar"
+            ? [request.actionID, "--apply-preview"]
+            : [request.actionID]
         if let instruction = request.userInstruction, !instruction.isEmpty {
             arguments.append(contentsOf: ["--instruction", instruction])
         }
@@ -506,7 +538,7 @@ struct InstalledRuntimeBridge: RuntimeBridge {
         _ = try runCommand(
             executablePath: configuration.runtimeExecutablePath,
             arguments: arguments,
-            input: request.selectedText
+            input: request.actionID == "add-to-calendar" ? preview.proposedOutput : request.selectedText
         )
     }
 
@@ -626,6 +658,7 @@ struct InstalledRuntimeBridge: RuntimeBridge {
 
         var environment = ProcessInfo.processInfo.environment
         environment["LC_ALL"] = "en_US.UTF-8"
+        environment["RC_DISABLE_KEYCHAIN_LOOKUP"] = "1"
         process.environment = environment
 
         if let input {

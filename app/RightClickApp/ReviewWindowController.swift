@@ -7,8 +7,8 @@ final class ReviewWindowController: NSWindowController {
         let hostingController = NSHostingController(rootView: ReviewWorkspaceView(model: appModel))
         let window = NSWindow(contentViewController: hostingController)
         window.title = "RightClick AI"
-        window.setContentSize(NSSize(width: 980, height: 720))
-        window.minSize = NSSize(width: 860, height: 640)
+        window.setContentSize(NSSize(width: 940, height: 700))
+        window.minSize = NSSize(width: 840, height: 620)
         window.center()
         window.isReleasedWhenClosed = false
         window.tabbingMode = .disallowed
