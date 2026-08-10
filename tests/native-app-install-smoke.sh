@@ -46,3 +46,5 @@ RCA_OPEN_APP_AFTER_INSTALL=0 \
 [[ -f "${draft_workflow}" ]]
 /usr/bin/grep -F 'right-click-service-action" "add-to-calendar"' "${direct_workflow}" >/dev/null
 /usr/bin/grep -F 'right-click-service-action" "draft-response"' "${draft_workflow}" >/dev/null
+/usr/bin/grep -F '<string>com.apple.Automator.text</string>' "${draft_workflow}" >/dev/null
+/usr/bin/grep -F '<string>com.apple.Automator.nothing</string>' "${direct_workflow}" >/dev/null

@@ -7,6 +7,8 @@ test_home="$(mktemp -d "${TMPDIR:-/tmp}/right-click-direct-services.XXXXXX")"
 trap 'rm -rf "${test_home}"' EXIT
 
 RCA_HOME="${test_home}" RCA_DEFAULT_PROVIDER=mock RCA_SKIP_PBS=1 "${repo_root}/install.sh" >/dev/null
+touch "${test_home}/Library/Services/Draft Response.workflow/stale-cache-marker"
+RCA_HOME="${test_home}" RCA_DEFAULT_PROVIDER=mock RCA_SKIP_PBS=1 "${repo_root}/install.sh" >/dev/null
 
 services_dir="${test_home}/Library/Services"
 runtime_root="${test_home}/Library/Application Support/RightClickCalendar"
@@ -20,8 +22,14 @@ wrapper_path="${runtime_root}/bin/right-click-service-action"
 [[ -d "${services_dir}/Polish Draft.workflow" ]]
 [[ -d "${services_dir}/Rewrite Friendly.workflow" ]]
 [[ -d "${services_dir}/Summarize.workflow" ]]
+[[ ! -e "${services_dir}/Draft Response.workflow/stale-cache-marker" ]]
 
 /usr/bin/grep -F '__SERVICE_NAME__' "${services_dir}/Draft Response.workflow/Contents/Info.plist" >/dev/null && exit 1
 /usr/bin/grep -F '<string>Draft Response</string>' "${services_dir}/Draft Response.workflow/Contents/Info.plist" >/dev/null
+/usr/bin/grep -F '<key>NSReturnTypes</key>' "${services_dir}/Draft Response.workflow/Contents/Info.plist" >/dev/null
+/usr/bin/grep -F '<key>outputTypeIdentifier</key>' "${services_dir}/Draft Response.workflow/Contents/document.wflow" >/dev/null
+/usr/bin/grep -F '<key>useAutomaticInputType</key>' "${services_dir}/Draft Response.workflow/Contents/document.wflow" >/dev/null
+/usr/bin/grep -F '<string>com.apple.Automator.text</string>' "${services_dir}/Draft Response.workflow/Contents/document.wflow" >/dev/null
+/usr/bin/grep -F '<string>com.apple.Automator.nothing</string>' "${services_dir}/Add to Calendar.workflow/Contents/document.wflow" >/dev/null
 /usr/bin/grep -F 'right-click-service-action" "draft-response"' "${services_dir}/Draft Response.workflow/Contents/document.wflow" >/dev/null
 /usr/bin/grep -F 'right-click-service-action" "add-to-calendar"' "${services_dir}/Add to Calendar.workflow/Contents/document.wflow" >/dev/null

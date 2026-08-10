@@ -100,8 +100,10 @@ render_workflow_template() {
   local destination="$2"
   require_asset "${source}"
   RC_WORKFLOW_COMMAND="${WORKFLOW_COMMAND}" \
+  RC_SERVICE_OUTPUT_TYPE="${WORKFLOW_SERVICE_OUTPUT_TYPE}" \
     /usr/bin/perl -0pe '
       s/__WORKFLOW_COMMAND__/$ENV{RC_WORKFLOW_COMMAND}/g;
+      s/__SERVICE_OUTPUT_TYPE__/$ENV{RC_SERVICE_OUTPUT_TYPE}/g;
     ' "${source}" > "${destination}"
 }
 
@@ -130,20 +132,35 @@ install_action_workflow() {
   local manifest_file="$1"
   local action_id=""
   local service_name=""
+  local workflow_bundle=""
   local workflow_dir=""
 
   load_action_manifest "${manifest_file}"
   action_id="${ACTION_ID}"
   service_name="${ACTION_SERVICE_NAME}"
-  workflow_dir="${SERVICES_DIR}/${service_name}.workflow/Contents"
+  workflow_bundle="${SERVICES_DIR}/${service_name}.workflow"
+  workflow_dir="${workflow_bundle}/Contents"
 
+  rm -rf "${workflow_bundle}"
   mkdir -p "${workflow_dir}"
 
   WORKFLOW_SERVICE_NAME="${service_name}"
   WORKFLOW_COMMAND="\"${USER_HOME}/Library/Application Support/${APP_ID}/bin/right-click-service-action\" \"${action_id}\""
+  if [[ "${ACTION_SERVICE_KIND}" == "clipboard" ]]; then
+    WORKFLOW_SERVICE_OUTPUT_TYPE="com.apple.Automator.text"
+  else
+    WORKFLOW_SERVICE_OUTPUT_TYPE="com.apple.Automator.nothing"
+  fi
 
   render_workflow_info_template "${CALENDAR_ACTION_ROOT}/workflow/Info.plist" "${workflow_dir}/Info.plist"
   render_workflow_template "${CALENDAR_ACTION_ROOT}/workflow/document.wflow" "${workflow_dir}/document.wflow"
+
+  if [[ "${ACTION_SERVICE_KIND}" == "clipboard" ]]; then
+    /usr/bin/plutil \
+      -insert NSServices.0.NSReturnTypes \
+      -xml '<array><string>public.utf8-plain-text</string><string>NSStringPboardType</string></array>' \
+      "${workflow_dir}/Info.plist"
+  fi
 
   /usr/bin/plutil -lint "${workflow_dir}/Info.plist" >/dev/null
   /usr/bin/plutil -lint "${workflow_dir}/document.wflow" >/dev/null
@@ -174,6 +191,7 @@ mkdir -p "${SERVICES_DIR}"
 if [[ ! -f "${SETTINGS_FILE}" ]]; then
   render_settings_template "${RUNTIME_ROOT}/defaults/settings.env.template" "${SETTINGS_FILE}"
 fi
+chmod 600 "${SETTINGS_FILE}" 2>/dev/null || true
 
 if [[ ! -f "${PROMPT_FILE}" ]]; then
   install_file "${CALENDAR_ACTION_ROOT}/prompt.txt" "${PROMPT_FILE}"
@@ -202,6 +220,7 @@ if [[ "${INSTALL_SERVICE_WORKFLOW}" == "1" ]]; then
   done < <(find "${ACTIONS_ROOT}" -mindepth 2 -maxdepth 2 -name action.env -print | sort)
 
   if [[ "${SKIP_PBS_UPDATE}" != "1" ]]; then
+    /System/Library/CoreServices/pbs -flush >/dev/null 2>&1 || true
     /System/Library/CoreServices/pbs -update >/dev/null 2>&1 || true
   fi
 
@@ -210,7 +229,7 @@ if [[ "${INSTALL_SERVICE_WORKFLOW}" == "1" ]]; then
   printf 'Settings: %s\n' "${SETTINGS_FILE}"
   printf 'Prompt: %s\n' "${PROMPT_FILE}"
   printf 'Edit settings: %s --edit-settings\n' "${BIN_DIR}/right-click-calendar"
-  printf 'If the menu item does not appear immediately, run: /System/Library/CoreServices/pbs -update\n'
+  printf 'If the menu item does not appear immediately, run: /System/Library/CoreServices/pbs -flush; /System/Library/CoreServices/pbs -update\n'
   printf 'The first live run will ask macOS for Calendar access.\n'
 else
   printf 'Installed shared runtime: %s\n' "${INSTALL_ROOT}"
