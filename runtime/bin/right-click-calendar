@@ -64,7 +64,7 @@ contains_passthrough_flag() {
   local arg=""
   for arg in "$@"; do
     case "${arg}" in
-      --help|-h|--dry-run|--self-test|--edit-settings|--list-actions|--validate-action|--action)
+      --help|-h|--dry-run|--self-test|--apply-preview|--edit-settings|--list-actions|--validate-action|--action)
         return 0
         ;;
     esac

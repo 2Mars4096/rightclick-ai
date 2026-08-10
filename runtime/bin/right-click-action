@@ -32,6 +32,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   right-click-action <action> [--dry-run] [--instruction <text>] [text]
+  right-click-action <action> --apply-preview [--dry-run]
   right-click-action <action> --self-test
   right-click-action --list-actions
   right-click-action --validate-action <action>
@@ -101,6 +102,7 @@ list_actions() {
 action_name=""
 dry_run=0
 self_test=0
+apply_preview=0
 validate_action=0
 list_only=0
 user_instruction=""
@@ -148,6 +150,10 @@ while (( $# > 0 )); do
       dry_run=1
       shift
       ;;
+    --apply-preview)
+      apply_preview=1
+      shift
+      ;;
     --)
       shift
       break
@@ -177,6 +183,14 @@ fi
 }
 
 load_action_manifest "${action_name}"
+
+if (( apply_preview )) && [[ "${action_name}" != "add-to-calendar" ]]; then
+  rc_fail "--apply-preview is currently supported only for add-to-calendar."
+fi
+
+if (( apply_preview && self_test )); then
+  rc_fail "--apply-preview cannot be combined with --self-test."
+fi
 
 if (( validate_action )); then
   printf 'Validated action: %s\t%s\n' "${RC_ACTION_NAME}" "${RC_ACTION_TITLE}"
@@ -259,7 +273,15 @@ else
 fi
 
 current_datetime="$(/bin/date '+%Y-%m-%d %H:%M:%S %z')"
+export RC_ACTION_CURRENT_DATETIME="${current_datetime}"
 printf '%s' "${input_text}" > "${input_tmp}"
+
+if (( apply_preview )); then
+  /bin/cp "${input_tmp}" "${raw_content_tmp}"
+  "${RC_ACTION_HANDLER}"
+  exit $?
+fi
+
 /usr/bin/osascript -l JavaScript "${tools_js}" render-prompt "${RC_ACTION_PROMPT_FILE}" "${input_tmp}" "${current_datetime}" "${timezone}" "${default_event_duration_minutes}" "${RC_ACTION_USER_INSTRUCTION}" > "${prompt_tmp}"
 
 if ! INSTALL_ROOT="${install_root}" "${provider_script}" "${prompt_tmp}" "${raw_content_tmp}" "${response_tmp}" 2> "${provider_error_tmp}"; then
