@@ -34,6 +34,8 @@ What exists today:
 - native settings now let the user enable or disable launch at login
 - direct Services for every current built-in action, not only calendar
 - clipboard history with a native hotkey, local storage, search, pin/favorite, and restore
+- multi-select clipboard review so several saved text or file-reference items can be combined into one review input
+- clipboard-driven paper import into a configured knowledge base using a copied BibTeX entry plus a copied PDF reference
 - clipboard fallback in the native review window for apps where Services are weak
 - first-class clipboard support for text, rich text, HTML, URLs, file references, images/screenshots, and colors
 - direct `Add to Calendar` service backed by the same shared runtime
@@ -49,7 +51,7 @@ Preferred native install path:
 ./scripts/install-native-app.sh
 ```
 
-`build-native-app.sh` builds `RightClickApp.app` into `./build/RightClickApp.app` when full Xcode is available. `install-native-app.sh` uses that bundle automatically, or you can point it at another bundle with `RCA_APP_BUNDLE=/path/to/RightClickApp.app`.
+`build-native-app.sh` builds `RightClickApp.app` into `./build.noindex/RightClickApp.app` when full Xcode is available, which keeps the repo copy out of Spotlight. `install-native-app.sh` uses that bundle automatically, or you can point it at another bundle with `RCA_APP_BUNDLE=/path/to/RightClickApp.app`.
 
 Release helpers:
 
@@ -132,6 +134,8 @@ The clipboard workspace is the built-in power feature:
 
 - open it from the menu bar or the global hotkey
 - search recent clipboard items
+- combine several saved text or file-reference items into one review input
+- import a paper into `content/papers/<citationKey>/index.md` plus `static/papers/<citationKey>.pdf`
 - pin or favorite items
 - restore them to the clipboard
 - run the same text actions on saved clipboard text
