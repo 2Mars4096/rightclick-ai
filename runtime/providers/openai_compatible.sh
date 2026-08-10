@@ -14,7 +14,11 @@ trap 'rm -f "${payload_file}"' EXIT
 
 rc_resolve_secret OPENAI_API_KEY || true
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  print -r -- "OPENAI_API_KEY is empty in settings.env and Keychain." >&2
+  if rc_is_true "${RC_DISABLE_KEYCHAIN_LOOKUP:-0}"; then
+    print -r -- "OPENAI_API_KEY is empty in settings.env." >&2
+  else
+    print -r -- "OPENAI_API_KEY is empty in settings.env and Keychain." >&2
+  fi
   exit 1
 fi
 

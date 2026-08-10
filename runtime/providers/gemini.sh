@@ -14,7 +14,11 @@ trap 'rm -f "${payload_file}"' EXIT
 
 rc_resolve_secret GEMINI_API_KEY || true
 if [[ -z "${GEMINI_API_KEY:-}" ]]; then
-  print -r -- "GEMINI_API_KEY is empty in settings.env and Keychain." >&2
+  if rc_is_true "${RC_DISABLE_KEYCHAIN_LOOKUP:-0}"; then
+    print -r -- "GEMINI_API_KEY is empty in settings.env." >&2
+  else
+    print -r -- "GEMINI_API_KEY is empty in settings.env and Keychain." >&2
+  fi
   exit 1
 fi
 

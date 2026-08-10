@@ -34,6 +34,11 @@ service_kind="${ACTION_SERVICE_KIND:-clipboard}"
 action_runtime="${script_dir}/right-click-action"
 calendar_runtime="${script_dir}/right-click-calendar"
 
+# Direct macOS Services run from Automator, where Keychain lookups can trigger
+# disruptive system password prompts. Saved settings.env values are the source
+# of truth for this path.
+export RC_DISABLE_KEYCHAIN_LOOKUP=1
+
 case "${service_kind}" in
   calendar)
     exec "${calendar_runtime}"
@@ -46,7 +51,8 @@ case "${service_kind}" in
     fi
 
     printf '%s' "${output}" | /usr/bin/pbcopy
-    rc_notify "${service_name}" "Copied to clipboard."
+    rc_notify "${service_name}" "Returned to the active app and copied to clipboard."
+    printf '%s' "${output}"
     ;;
   *)
     rc_log "Unknown direct service kind '${service_kind}' for action '${action_name}'."

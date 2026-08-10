@@ -81,6 +81,17 @@ rc_resolve_secret OPENAI_API_KEY
 [[ "${OPENAI_API_KEY}" == "plain-env-secret" ]]
 [[ ! -s "${security_log}" ]]
 
+: > "${security_log}"
+unset OPENAI_API_KEY
+export RC_DISABLE_KEYCHAIN_LOOKUP=1
+if rc_resolve_secret OPENAI_API_KEY; then
+  print -r -- "Expected disabled Keychain lookup to fail." >&2
+  exit 1
+fi
+[[ -z "${OPENAI_API_KEY:-}" ]]
+[[ ! -s "${security_log}" ]]
+unset RC_DISABLE_KEYCHAIN_LOOKUP
+
 unset MISSING_SECRET
 if rc_resolve_secret MISSING_SECRET; then
   print -r -- "Expected missing secret lookup to fail." >&2

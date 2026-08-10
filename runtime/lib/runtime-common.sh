@@ -106,6 +106,9 @@ rc_resolve_secret() {
   local secret=""
 
   [[ -n "${current_value}" ]] && return 0
+  if rc_is_true "${RC_DISABLE_KEYCHAIN_LOOKUP:-0}"; then
+    return 1
+  fi
 
   if [[ -z "${account_name}" ]]; then
     account_name="${variable_name}"
