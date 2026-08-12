@@ -78,6 +78,38 @@ struct ClipboardPaperImportSmoke {
             fail("Expected re-importing the same paper to keep the existing page and canonical PDF.")
         }
 
+        guard let match = PaperKnowledgeBaseResolver.match(
+            for: result.pdfURL,
+            configuration: configuration
+        ) else {
+            fail("Expected the canonical PDF to resolve to its paper notes.")
+        }
+
+        guard match.citationKey == "acemoglu2012network", match.pageURL == result.pageURL else {
+            fail("Expected the resolved note to preserve the citation-key pairing.")
+        }
+
+        let request = CodexPaperIngestionRequest(
+            proposal: proposal,
+            knowledgeBaseRoot: knowledgeBaseRoot,
+            keepSourcePDF: false
+        )
+        let arguments = CodexPaperIngestionLauncher.arguments(for: request)
+        guard arguments.contains("--approve-for-me"),
+              arguments.contains("workspace-write"),
+              request.prompt.contains("Use $ingest-paper-kb"),
+              request.prompt.contains(proposal.bibliographyEntry.rawBibTeX) else {
+            fail("Expected the Codex handoff to invoke the ingestion skill with reviewed inputs.")
+        }
+
+        let jsonLines = """
+        {"type":"item.completed","item":{"type":"agent_message","text":"Ingested and verified."}}
+        {"type":"turn.completed"}
+        """
+        guard CodexPaperIngestionLauncher.finalAgentMessage(fromJSONLines: jsonLines) == "Ingested and verified." else {
+            fail("Expected the final Codex agent message to be extracted from JSONL output.")
+        }
+
         print("Clipboard paper import smoke passed.")
     }
 
