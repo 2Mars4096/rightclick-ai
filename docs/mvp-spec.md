@@ -57,6 +57,13 @@ After one install, a user should be able to:
 - privacy defaults for sensitive sources and likely secrets
 - initial non-text preview/restore support
 
+### Focused Finder Integration
+
+- accept one selected PDF through the `Open Paper & Notes` Service
+- resolve and open its canonical Markdown paper note when already ingested
+- collect BibTeX in a native review workspace for unknown PDFs
+- hand reviewed new-paper intake to Codex and the `ingest-paper-kb` skill
+
 ### Built-In Actions
 
 - core:
@@ -72,7 +79,7 @@ After one install, a user should be able to:
 ## Explicitly Out Of Scope For MVP
 
 - multimodal AI actions for images and figures
-- Finder-driven file and folder workflows
+- general Finder-driven file and folder workflows beyond the focused paper-library integration
 - in-app natural-language feature generation
 - public plugin marketplace
 - cloud sync

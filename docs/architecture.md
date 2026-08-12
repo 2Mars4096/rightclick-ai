@@ -124,6 +124,16 @@ The review model should be generic enough to support:
 7. Host renders review UI.
 8. Host applies the approved result.
 
+### Paper PDF Action
+
+1. Finder sends one selected PDF to the native `Open Paper & Notes` Service.
+2. The host scans configured paper pages for the exact `paperPDF` filename.
+3. If found, the host opens the selected PDF and the matching Markdown note.
+4. If missing, the host opens the Paper workspace and collects a complete Google Scholar BibTeX entry.
+5. After review, the host runs `codex exec` in the knowledge-base root with an explicit `$ingest-paper-kb` request.
+6. The skill remains authoritative for metadata verification, preflight, skimming, note generation, safe apply, and verification.
+7. When Codex succeeds, the host resolves the citation key and opens the canonical PDF and Markdown note.
+
 ## Design Principles
 
 - Native first: macOS should feel like the host, not a wrapper around Automator editing.

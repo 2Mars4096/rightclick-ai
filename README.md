@@ -36,6 +36,7 @@ What exists today:
 - clipboard history with a native hotkey, local storage, search, pin/favorite, and restore
 - multi-select clipboard review so several saved text or file-reference items can be combined into one review input
 - clipboard-driven paper import into a configured knowledge base using a copied BibTeX entry plus a copied PDF reference
+- Finder `Open Paper & Notes` service: open an ingested PDF with its Markdown notes, or review BibTeX and hand a new paper to Codex's `ingest-paper-kb` skill
 - clipboard fallback in the native review window for apps where Services are weak
 - first-class clipboard support for text, rich text, HTML, URLs, file references, images/screenshots, and colors
 - direct `Add to Calendar` service backed by the same shared runtime
@@ -140,6 +141,15 @@ The clipboard workspace is the built-in power feature:
 - restore them to the clipboard
 - run the same text actions on saved clipboard text
 - preview and restore non-text clipboard items locally on the same Mac
+
+The paper-library Finder flow is deliberately narrower than a generic file-action system:
+
+1. Configure the knowledge-base root in Settings.
+2. Right-click one PDF in Finder and choose `Open Paper & Notes` under Services.
+3. If its `paperPDF` filename is already indexed, RightClick AI opens the PDF and `content/papers/<citationKey>/index.md` together.
+4. Otherwise, paste the complete Google Scholar BibTeX entry in the Paper workspace and choose `Ingest with Codex`.
+
+The ingestion handoff requires an authenticated `codex` CLI and the personal `ingest-paper-kb` skill. Codex performs the skill's metadata check, safe preflight, paper skim, notes generation, apply, and verification; the native app does not duplicate those rules.
 
 ## Custom Provider
 
