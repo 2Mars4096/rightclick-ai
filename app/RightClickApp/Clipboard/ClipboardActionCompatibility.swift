@@ -170,6 +170,246 @@ struct ClipboardPaperImportResult: Hashable {
     }
 }
 
+struct PaperKnowledgeBaseMatch: Hashable {
+    let citationKey: String
+    let pageURL: URL
+    let pdfURL: URL
+}
+
+enum PaperKnowledgeBaseResolver {
+    static func match(
+        for selectedPDFURL: URL,
+        configuration: PaperKnowledgeBaseConfiguration,
+        fileManager: FileManager = .default
+    ) -> PaperKnowledgeBaseMatch? {
+        guard let contentDirectoryURL = configuration.contentPapersDirectoryURL,
+              let staticDirectoryURL = configuration.staticPapersDirectoryURL else {
+            return nil
+        }
+
+        let selectedFilename = selectedPDFURL.lastPathComponent
+        let selectedStandardPath = selectedPDFURL.standardizedFileURL.path
+        let paperDirectories: [URL]
+
+        do {
+            paperDirectories = try fileManager.contentsOfDirectory(
+                at: contentDirectoryURL,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            return nil
+        }
+
+        for paperDirectory in paperDirectories.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let pageURL = paperDirectory.appendingPathComponent("index.md", isDirectory: false)
+            guard let markdown = try? String(contentsOf: pageURL, encoding: .utf8),
+                  let embeddedFilename = paperPDFFilename(in: markdown) else {
+                continue
+            }
+
+            let canonicalPDFURL = staticDirectoryURL.appendingPathComponent(embeddedFilename, isDirectory: false)
+            let exactPathMatch = canonicalPDFURL.standardizedFileURL.path == selectedStandardPath
+            let filenameMatch = embeddedFilename.caseInsensitiveCompare(selectedFilename) == .orderedSame
+            guard exactPathMatch || filenameMatch else {
+                continue
+            }
+
+            return PaperKnowledgeBaseMatch(
+                citationKey: paperDirectory.lastPathComponent,
+                pageURL: pageURL,
+                pdfURL: fileManager.fileExists(atPath: canonicalPDFURL.path) ? canonicalPDFURL : selectedPDFURL
+            )
+        }
+
+        return nil
+    }
+
+    static func match(
+        citationKey: String,
+        configuration: PaperKnowledgeBaseConfiguration,
+        fileManager: FileManager = .default
+    ) -> PaperKnowledgeBaseMatch? {
+        guard let contentDirectoryURL = configuration.contentPapersDirectoryURL,
+              let staticDirectoryURL = configuration.staticPapersDirectoryURL else {
+            return nil
+        }
+
+        let pageURL = contentDirectoryURL
+            .appendingPathComponent(citationKey, isDirectory: true)
+            .appendingPathComponent("index.md", isDirectory: false)
+        guard let markdown = try? String(contentsOf: pageURL, encoding: .utf8),
+              let embeddedFilename = paperPDFFilename(in: markdown) else {
+            return nil
+        }
+
+        let pdfURL = staticDirectoryURL.appendingPathComponent(embeddedFilename, isDirectory: false)
+        guard fileManager.fileExists(atPath: pdfURL.path) else {
+            return nil
+        }
+
+        return PaperKnowledgeBaseMatch(citationKey: citationKey, pageURL: pageURL, pdfURL: pdfURL)
+    }
+
+    private static func paperPDFFilename(in markdown: String) -> String? {
+        let pattern = #"paperPDF\s+filename\s*=\s*\"([^\"]+)\""#
+        guard let expression = try? NSRegularExpression(pattern: pattern),
+              let match = expression.firstMatch(
+                in: markdown,
+                range: NSRange(markdown.startIndex..., in: markdown)
+              ),
+              let filenameRange = Range(match.range(at: 1), in: markdown) else {
+            return nil
+        }
+
+        return String(markdown[filenameRange])
+    }
+}
+
+struct CodexPaperIngestionRequest: Hashable {
+    let proposal: ClipboardPaperImportProposal
+    let knowledgeBaseRoot: URL
+    let keepSourcePDF: Bool
+
+    var prompt: String {
+        let sourceInstruction = keepSourcePDF
+            ? "Copy the PDF so the original remains at its current path."
+            : "Move the PDF into the canonical paper library after the destination copy is verified."
+
+        return """
+        Use $ingest-paper-kb to ingest exactly one academic paper into the configured knowledge base.
+
+        Knowledge-base root:
+        \(knowledgeBaseRoot.path)
+
+        Source PDF:
+        \(proposal.sourcePDFURL.path)
+
+        User-supplied Google Scholar BibTeX entry:
+        \(proposal.bibliographyEntry.rawBibTeX)
+
+        \(sourceInstruction)
+
+        Follow the skill completely: verify the PDF against the BibTeX entry, preflight before mutation, skim the paper, write evidence-based notes, apply safely, and verify the resulting PDF and Markdown page. Do not replace the supplied BibTeX entry by searching. If metadata mismatches, a collision is ambiguous, or the paper cannot be read reliably, make no unsafe changes and explain the blocker in the final response. Do not ask an interactive question because this run is launched non-interactively.
+        """
+    }
+}
+
+enum CodexPaperIngestionError: LocalizedError {
+    case codexNotFound
+    case launchFailed(String)
+    case failed(exitCode: Int32, output: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .codexNotFound:
+            return "Codex CLI was not found. Install it or make `codex` available in PATH."
+        case let .launchFailed(message):
+            return "Could not start Codex: \(message)"
+        case let .failed(exitCode, output):
+            let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return detail.isEmpty
+                ? "Codex paper ingestion failed with exit code \(exitCode)."
+                : "Codex paper ingestion failed: \(detail)"
+        }
+    }
+}
+
+enum CodexPaperIngestionLauncher {
+    static func executableURL(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default
+    ) -> URL? {
+        var candidates: [String] = []
+        if let configured = environment["CODEX_EXECUTABLE"], !configured.isEmpty {
+            candidates.append(configured)
+        }
+
+        candidates.append(contentsOf: ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"])
+        if let path = environment["PATH"] {
+            candidates.append(contentsOf: path.split(separator: ":").map { "\($0)/codex" })
+        }
+
+        for candidate in candidates {
+            let expanded = (candidate as NSString).expandingTildeInPath
+            if fileManager.isExecutableFile(atPath: expanded) {
+                return URL(fileURLWithPath: expanded, isDirectory: false)
+            }
+        }
+
+        return nil
+    }
+
+    static func arguments(for request: CodexPaperIngestionRequest) -> [String] {
+        [
+            "exec",
+            "--json",
+            "--sandbox", "workspace-write",
+            "--approve-for-me",
+            "--cd", request.knowledgeBaseRoot.path,
+            "--add-dir", request.proposal.sourcePDFURL.deletingLastPathComponent().path,
+            request.prompt,
+        ]
+    }
+
+    static func run(_ request: CodexPaperIngestionRequest) async throws -> String {
+        guard let executableURL = executableURL() else {
+            throw CodexPaperIngestionError.codexNotFound
+        }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                let outputPipe = Pipe()
+                process.executableURL = executableURL
+                process.arguments = arguments(for: request)
+                process.currentDirectoryURL = request.knowledgeBaseRoot
+                process.standardOutput = outputPipe
+                process.standardError = outputPipe
+
+                do {
+                    try process.run()
+                } catch {
+                    continuation.resume(throwing: CodexPaperIngestionError.launchFailed(error.localizedDescription))
+                    return
+                }
+
+                let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                process.waitUntilExit()
+                let output = String(data: data, encoding: .utf8) ?? ""
+
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: output)
+                } else {
+                    continuation.resume(
+                        throwing: CodexPaperIngestionError.failed(
+                            exitCode: process.terminationStatus,
+                            output: finalAgentMessage(fromJSONLines: output) ?? output
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    static func finalAgentMessage(fromJSONLines output: String) -> String? {
+        var finalMessage: String?
+        for line in output.split(whereSeparator: \.isNewline) {
+            guard let data = String(line).data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let item = object["item"] as? [String: Any],
+                  item["type"] as? String == "agent_message",
+                  let text = item["text"] as? String else {
+                continue
+            }
+
+            finalMessage = text
+        }
+
+        return finalMessage
+    }
+}
+
 enum ClipboardPaperImportError: LocalizedError {
     case invalidKnowledgeBaseRoot(String)
     case missingSourcePDF(String)
@@ -222,6 +462,17 @@ enum ClipboardSelectionComposer {
 }
 
 enum ClipboardPaperImportAnalyzer {
+    static func analyze(
+        pdfURL: URL,
+        bibTeX: String,
+        configuration: PaperKnowledgeBaseConfiguration,
+        fileManager: FileManager = .default
+    ) -> ClipboardPaperImportAnalysis {
+        let pdfItem = ClipboardItem(kind: .fileURL, text: pdfURL.path, sourceName: "Finder")
+        let bibliographyItem = ClipboardItem(kind: .text, text: bibTeX, sourceName: "Google Scholar")
+        return analyze(items: [pdfItem, bibliographyItem], configuration: configuration, fileManager: fileManager)
+    }
+
     static func analyze(
         items: [ClipboardItem],
         configuration: PaperKnowledgeBaseConfiguration,
@@ -567,7 +818,7 @@ extension ClipboardItem {
     }
 }
 
-private enum ClipboardPaperBibliographyParser {
+enum ClipboardPaperBibliographyParser {
     static func parseFirstEntry(from text: String) -> ClipboardPaperBibliographyEntry? {
         let normalizedText = ClipboardTextNormalization.normalizeText(text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
