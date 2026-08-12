@@ -18,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var serviceProvider = SelectedTextServiceProvider(
         appModel: appModel,
         presentReviewWindow: { [weak self] in
-            self?.showReviewWindow()
+            self?.presentReviewWorkspace()
         }
     )
 
@@ -61,23 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc(showReviewWindow:)
     func showReviewWindow(_ sender: Any? = nil) {
         appModel.showSelectedTextWorkspace()
-
-        if reviewWindowController == nil {
-            reviewWindowController = ReviewWindowController(appModel: appModel)
-        }
-
-        presentWindow(reviewWindowController)
+        presentReviewWorkspace()
     }
 
     @objc(showClipboardHistory:)
     func showClipboardHistory(_ sender: Any? = nil) {
         appModel.showClipboardWorkspace()
-
-        if reviewWindowController == nil {
-            reviewWindowController = ReviewWindowController(appModel: appModel)
-        }
-
-        presentWindow(reviewWindowController)
+        presentReviewWorkspace()
     }
 
     @objc(showSettingsWindow:)
@@ -232,6 +222,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         window.tabbingMode = .disallowed
         window.collectionBehavior.insert(.moveToActiveSpace)
         return NSWindowController(window: window)
+    }
+
+    private func presentReviewWorkspace() {
+        if reviewWindowController == nil {
+            reviewWindowController = ReviewWindowController(appModel: appModel)
+        }
+
+        presentWindow(reviewWindowController)
     }
 
     private func presentWindow(_ windowController: NSWindowController?) {

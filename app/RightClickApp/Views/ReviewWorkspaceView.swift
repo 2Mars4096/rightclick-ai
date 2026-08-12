@@ -16,6 +16,8 @@ struct ReviewWorkspaceView: View {
                     selectionWorkspace
                 case .clipboard:
                     clipboardWorkspace
+                case .paper:
+                    paperWorkspace
                 }
             }
             .padding(18)
@@ -86,7 +88,7 @@ struct ReviewWorkspaceView: View {
         }
         .labelsHidden()
         .pickerStyle(.segmented)
-        .frame(width: 220)
+        .frame(width: 300)
     }
 
     private var selectionWorkspace: some View {
@@ -245,6 +247,110 @@ struct ReviewWorkspaceView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .disabled(model.isApplyingPreview)
+    }
+
+    private var paperWorkspace: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Selected PDF", systemImage: "doc.richtext")
+                    .font(.subheadline.weight(.semibold))
+
+                if let pdfURL = model.selectedPaperPDFURL {
+                    Text(pdfURL.lastPathComponent)
+                        .font(.body.weight(.medium))
+                    Text(pdfURL.path)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                } else {
+                    ContentUnavailableView(
+                        "No paper selected",
+                        systemImage: "doc",
+                        description: Text("Right-click one PDF in Finder and choose Open Paper & Notes.")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 90)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Google Scholar BibTeX", systemImage: "text.quote")
+                        .font(.subheadline.weight(.semibold))
+
+                    Spacer()
+
+                    Text("Required for a new paper")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                TextEditor(text: $model.paperBibTeXDraft)
+                    .font(.system(.body, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .background(Color(NSColor.textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                    )
+                    .frame(minHeight: 190)
+                    .disabled(model.isIngestingPaper)
+
+                if let proposal = model.selectedPaperDraftProposal {
+                    VStack(alignment: .leading, spacing: 6) {
+                        metadataRow("Citation Key", value: proposal.citationKey)
+                        metadataRow("Title", value: proposal.paperTitle)
+                        metadataRow("Paper Page", value: proposal.destinationPageURL.path)
+                        metadataRow("Canonical PDF", value: proposal.destinationPDFURL.path)
+                    }
+                }
+
+                Text(model.paperDraftStatusMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    Toggle("Keep original PDF", isOn: $model.keepSourcePaperPDF)
+                        .toggleStyle(.checkbox)
+                        .disabled(model.isIngestingPaper)
+
+                    Spacer()
+
+                    if model.isIngestingPaper {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel("Ingesting paper with Codex")
+                    }
+
+                    Button(model.isIngestingPaper ? "Ingesting…" : "Ingest with Codex") {
+                        model.ingestSelectedPaperWithCodex()
+                    }
+                    .buttonStyle(PrimaryActionButtonStyle())
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.canIngestSelectedPaperWithCodex)
+                }
+
+                if !model.paperIngestionOutput.isEmpty {
+                    Divider()
+                    ScrollView {
+                        Text(model.paperIngestionOutput)
+                            .font(.caption)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 120)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
     }
 
     private var legacySelectionWorkspace: some View {

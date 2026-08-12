@@ -100,6 +100,7 @@ struct RuntimePreview: Equatable, Sendable {
 enum WorkspaceMode: String, CaseIterable, Identifiable {
     case selection
     case clipboard
+    case paper
 
     var id: String {
         rawValue
@@ -111,6 +112,8 @@ enum WorkspaceMode: String, CaseIterable, Identifiable {
             return "Selection"
         case .clipboard:
             return "Clipboard"
+        case .paper:
+            return "Paper"
         }
     }
 
@@ -120,6 +123,8 @@ enum WorkspaceMode: String, CaseIterable, Identifiable {
             return "Run an AI action on the text you selected in another app."
         case .clipboard:
             return "Search, review, and reuse recent clipboard items with the same action runtime."
+        case .paper:
+            return "Open an existing paper note or ingest a new PDF with Codex."
         }
     }
 }
@@ -138,8 +143,9 @@ final class AppModel: ObservableObject {
     private static let workspaceModeDefaultsKey = "rightClick.workspaceMode"
     private static let clipboardHotkeyEnabledDefaultsKey = "rightClick.clipboardHotkeyEnabled"
     static let defaultRuntimeRootPath = "~/Library/Application Support/RightClickAI"
-    static let defaultPaperKnowledgeBaseRootPath = "/Volumes/data/Dropbox/Projects/my-knowledge-base"
+    static let defaultPaperKnowledgeBaseRootPath = "~/Downloads/local_projects/my-knowledge-base"
     private static let legacyRuntimeRootPath = "~/Library/Application Support/RightClickCalendar"
+    private static let legacyVolumePaperKnowledgeBaseRootPath = "/Volumes/data/Dropbox/Projects/my-knowledge-base"
     private static let legacyPaperKnowledgeBaseRootPath = "~/Dropbox/Projects/my-knowledge-base"
 
     static let shared = AppModel(runtimeBridge: InstalledRuntimeBridge())
@@ -211,11 +217,17 @@ final class AppModel: ObservableObject {
             NotificationCenter.default.post(name: .rightClickClipboardHotKeyPreferenceDidChange, object: self)
         }
     }
+    @Published var selectedPaperPDFURL: URL? = nil
+    @Published var paperBibTeXDraft = ""
+    @Published var keepSourcePaperPDF = false
+    @Published private(set) var isIngestingPaper = false
+    @Published private(set) var paperIngestionOutput = ""
 
     private let runtimeBridge: any RuntimeBridge
     private var cancellables: Set<AnyCancellable> = []
     private var previewTask: Task<Void, Never>?
     private var applyTask: Task<Void, Never>?
+    private var paperIngestionTask: Task<Void, Never>?
     private var previewRequestID = UUID()
 
     convenience init(runtimeBridge: any RuntimeBridge) {
@@ -306,6 +318,38 @@ final class AppModel: ObservableObject {
 
     var paperImportSelectionSummary: String {
         paperImportAnalysis.message
+    }
+
+    var paperDraftImportAnalysis: ClipboardPaperImportAnalysis {
+        guard let selectedPaperPDFURL else {
+            return .unavailable("Right-click a PDF in Finder and choose Open Paper & Notes.")
+        }
+
+        guard !paperBibTeXDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .unavailable("Paste the complete Google Scholar BibTeX entry for this paper.")
+        }
+
+        return ClipboardPaperImportAnalyzer.analyze(
+            pdfURL: selectedPaperPDFURL,
+            bibTeX: paperBibTeXDraft,
+            configuration: paperKnowledgeBaseConfiguration
+        )
+    }
+
+    var selectedPaperDraftProposal: ClipboardPaperImportProposal? {
+        paperDraftImportAnalysis.proposal
+    }
+
+    var canIngestSelectedPaperWithCodex: Bool {
+        selectedPaperDraftProposal != nil && !isIngestingPaper
+    }
+
+    var paperDraftStatusMessage: String {
+        if isIngestingPaper {
+            return "Codex is verifying, skimming, and ingesting the paper. This can take several minutes."
+        }
+
+        return paperDraftImportAnalysis.message
     }
 
     var selectedProviderTitle: String {
@@ -461,7 +505,7 @@ final class AppModel: ObservableObject {
     }
 
     var isBusy: Bool {
-        isPreparingPreview || isApplyingPreview
+        isPreparingPreview || isApplyingPreview || isIngestingPaper
     }
 
     var runButtonTitle: String {
@@ -597,6 +641,110 @@ final class AppModel: ObservableObject {
         if filteredClipboardItems.isEmpty {
             setStatus("Clipboard history is ready. Copy text, then use the clipboard workspace or the direct Services.")
         }
+    }
+
+    func showPaperWorkspace() {
+        activeWorkspaceMode = .paper
+    }
+
+    @discardableResult
+    func acceptSelectedPaperPDF(_ url: URL) -> Bool {
+        let standardizedURL = url.standardizedFileURL
+        guard standardizedURL.pathExtension.caseInsensitiveCompare("pdf") == .orderedSame,
+              FileManager.default.fileExists(atPath: standardizedURL.path) else {
+            setStatus("RightClick AI needs one existing PDF file.", tone: .warning)
+            activeWorkspaceMode = .paper
+            return false
+        }
+
+        selectedPaperPDFURL = standardizedURL
+        paperBibTeXDraft = ""
+        paperIngestionOutput = ""
+        launchSource = "Finder PDF Service"
+
+        if let match = PaperKnowledgeBaseResolver.match(
+            for: standardizedURL,
+            configuration: paperKnowledgeBaseConfiguration
+        ) {
+            openPaperAndNotes(match: match, selectedPDFURL: standardizedURL)
+            return true
+        }
+
+        activeWorkspaceMode = .paper
+        setStatus(
+            "No corresponding paper note was found. Paste the Google Scholar BibTeX entry to ingest it with Codex.",
+            tone: .warning
+        )
+        return false
+    }
+
+    func ingestSelectedPaperWithCodex() {
+        guard let proposal = selectedPaperDraftProposal,
+              let knowledgeBaseRoot = paperKnowledgeBaseConfiguration.rootURL else {
+            setStatus(paperDraftImportAnalysis.message, tone: .warning)
+            return
+        }
+
+        paperIngestionTask?.cancel()
+        isIngestingPaper = true
+        paperIngestionOutput = ""
+        setStatus("Codex is ingesting \(proposal.citationKey) with the ingest-paper-kb skill.")
+
+        let request = CodexPaperIngestionRequest(
+            proposal: proposal,
+            knowledgeBaseRoot: knowledgeBaseRoot,
+            keepSourcePDF: keepSourcePaperPDF
+        )
+        let citationKey = proposal.citationKey
+
+        paperIngestionTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                let output = try await CodexPaperIngestionLauncher.run(request)
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                paperIngestionOutput = CodexPaperIngestionLauncher.finalAgentMessage(fromJSONLines: output) ?? output
+                isIngestingPaper = false
+
+                if let match = PaperKnowledgeBaseResolver.match(
+                    citationKey: citationKey,
+                    configuration: paperKnowledgeBaseConfiguration
+                ) {
+                    selectedPaperPDFURL = match.pdfURL
+                    openPaperAndNotes(match: match, selectedPDFURL: match.pdfURL)
+                    setStatus("Ingested \(citationKey) and opened its PDF and notes.", tone: .success)
+                } else {
+                    setStatus(
+                        "Codex finished, but no verified paper page was found for \(citationKey). Review the run output below.",
+                        tone: .warning
+                    )
+                }
+            } catch {
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                isIngestingPaper = false
+                paperIngestionOutput = error.localizedDescription
+                setStatus(error.localizedDescription, tone: .failure)
+            }
+        }
+    }
+
+    private func openPaperAndNotes(match: PaperKnowledgeBaseMatch, selectedPDFURL: URL) {
+        let openedPDF = NSWorkspace.shared.open(selectedPDFURL)
+        let openedNotes = NSWorkspace.shared.open(match.pageURL)
+        setStatus(
+            openedPDF && openedNotes
+                ? "Opened \(match.citationKey) and its notes."
+                : "Found \(match.citationKey), but macOS could not open both files.",
+            tone: openedPDF && openedNotes ? .success : .warning
+        )
     }
 
     func startClipboardMonitoringIfNeeded() {
@@ -1233,19 +1381,26 @@ final class AppModel: ObservableObject {
     }
 
     private static func initialPaperKnowledgeBaseRootPath() -> String {
-        if let savedPath = UserDefaults.standard.string(forKey: paperKnowledgeBaseRootDefaultsKey) {
+        let fileManager = FileManager.default
+        if let savedPath = UserDefaults.standard.string(forKey: paperKnowledgeBaseRootDefaultsKey),
+           fileManager.fileExists(atPath: (savedPath as NSString).expandingTildeInPath) {
             return savedPath
         }
 
-        let fileManager = FileManager.default
-        let preferredPath = (defaultPaperKnowledgeBaseRootPath as NSString).expandingTildeInPath
-        if fileManager.fileExists(atPath: preferredPath) {
-            return defaultPaperKnowledgeBaseRootPath
+        if let environmentPath = ProcessInfo.processInfo.environment["MY_KNOWLEDGE_BASE_ROOT"],
+           fileManager.fileExists(atPath: (environmentPath as NSString).expandingTildeInPath) {
+            return environmentPath
         }
 
-        let legacyPath = (legacyPaperKnowledgeBaseRootPath as NSString).expandingTildeInPath
-        if fileManager.fileExists(atPath: legacyPath) {
-            return legacyPaperKnowledgeBaseRootPath
+        for candidate in [
+            defaultPaperKnowledgeBaseRootPath,
+            legacyVolumePaperKnowledgeBaseRootPath,
+            legacyPaperKnowledgeBaseRootPath,
+            "~/local_projects/my-knowledge-base",
+        ] {
+            if fileManager.fileExists(atPath: (candidate as NSString).expandingTildeInPath) {
+                return candidate
+            }
         }
 
         return defaultPaperKnowledgeBaseRootPath

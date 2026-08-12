@@ -156,12 +156,12 @@ struct SettingsView: View {
     private var paperLibraryCard: some View {
         SettingsCard(
             title: "Paper Library",
-            subtitle: "Import a copied BibTeX entry plus a copied PDF reference into your knowledge base."
+            subtitle: "Open paper notes from Finder or ingest a new PDF with Codex and the ingest-paper-kb skill."
         ) {
             SettingsStack {
                 settingsRow("Knowledge Base Root", detail: "Used when importing papers from the clipboard workspace.") {
                     VStack(alignment: .leading, spacing: 12) {
-                        TextField("/Volumes/data/Dropbox/Projects/my-knowledge-base", text: $model.paperKnowledgeBaseRootPath)
+                        TextField("~/Downloads/local_projects/my-knowledge-base", text: $model.paperKnowledgeBaseRootPath)
                             .textFieldStyle(.roundedBorder)
 
                         settingsActionRow {
