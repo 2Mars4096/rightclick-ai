@@ -92,14 +92,27 @@ struct ClipboardPaperImportSmoke {
         let request = CodexPaperIngestionRequest(
             proposal: proposal,
             knowledgeBaseRoot: knowledgeBaseRoot,
-            keepSourcePDF: false
+            keepSourcePDF: false,
+            model: "gpt-5.6-terra"
         )
         let arguments = CodexPaperIngestionLauncher.arguments(for: request)
         guard arguments.contains("--approve-for-me"),
               arguments.contains("workspace-write"),
+              arguments.contains("--model"),
+              arguments.contains("gpt-5.6-terra"),
               request.prompt.contains("Use $ingest-paper-kb"),
               request.prompt.contains(proposal.bibliographyEntry.rawBibTeX) else {
             fail("Expected the Codex handoff to invoke the ingestion skill with reviewed inputs.")
+        }
+
+        let defaultModelRequest = CodexPaperIngestionRequest(
+            proposal: proposal,
+            knowledgeBaseRoot: knowledgeBaseRoot,
+            keepSourcePDF: false,
+            model: nil
+        )
+        guard !CodexPaperIngestionLauncher.arguments(for: defaultModelRequest).contains("--model") else {
+            fail("Expected Codex Default to inherit the user's configured model.")
         }
 
         let jsonLines = """

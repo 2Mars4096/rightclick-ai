@@ -270,6 +270,7 @@ struct CodexPaperIngestionRequest: Hashable {
     let proposal: ClipboardPaperImportProposal
     let knowledgeBaseRoot: URL
     let keepSourcePDF: Bool
+    let model: String?
 
     var prompt: String {
         let sourceInstruction = keepSourcePDF
@@ -341,15 +342,21 @@ enum CodexPaperIngestionLauncher {
     }
 
     static func arguments(for request: CodexPaperIngestionRequest) -> [String] {
-        [
+        var arguments = [
             "exec",
             "--json",
             "--sandbox", "workspace-write",
             "--approve-for-me",
             "--cd", request.knowledgeBaseRoot.path,
             "--add-dir", request.proposal.sourcePDFURL.deletingLastPathComponent().path,
-            request.prompt,
         ]
+
+        if let model = request.model?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+            arguments.append(contentsOf: ["--model", model])
+        }
+
+        arguments.append(request.prompt)
+        return arguments
     }
 
     static func run(_ request: CodexPaperIngestionRequest) async throws -> String {

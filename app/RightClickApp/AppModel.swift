@@ -136,10 +136,65 @@ enum StatusTone: String {
     case failure
 }
 
+enum PaperIngestionModelChoice: String, CaseIterable, Identifiable {
+    case codexDefault
+    case gpt56Sol
+    case gpt56Terra
+    case gpt56Luna
+    case custom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .codexDefault:
+            return "Codex Default"
+        case .gpt56Sol:
+            return "GPT-5.6 Sol"
+        case .gpt56Terra:
+            return "GPT-5.6 Terra"
+        case .gpt56Luna:
+            return "GPT-5.6 Luna"
+        case .custom:
+            return "Custom…"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .codexDefault:
+            return "Uses the model and reasoning effort from your Codex configuration."
+        case .gpt56Sol:
+            return "Best quality for careful paper verification and reading notes."
+        case .gpt56Terra:
+            return "A balanced choice for quality and turnaround time."
+        case .gpt56Luna:
+            return "The fastest preset for routine ingestion."
+        case .custom:
+            return "Use any model identifier available to your Codex account."
+        }
+    }
+
+    var modelID: String? {
+        switch self {
+        case .codexDefault, .custom:
+            return nil
+        case .gpt56Sol:
+            return "gpt-5.6-sol"
+        case .gpt56Terra:
+            return "gpt-5.6-terra"
+        case .gpt56Luna:
+            return "gpt-5.6-luna"
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private static let runtimeRootDefaultsKey = "rightClick.runtimeRootPath"
     private static let paperKnowledgeBaseRootDefaultsKey = "rightClick.paperKnowledgeBaseRootPath"
+    private static let paperIngestionModelDefaultsKey = "rightClick.paperIngestionModel"
+    private static let paperIngestionCustomModelDefaultsKey = "rightClick.paperIngestionCustomModel"
     private static let workspaceModeDefaultsKey = "rightClick.workspaceMode"
     private static let clipboardHotkeyEnabledDefaultsKey = "rightClick.clipboardHotkeyEnabled"
     static let defaultRuntimeRootPath = "~/Library/Application Support/RightClickAI"
@@ -196,6 +251,16 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(paperKnowledgeBaseRootPath, forKey: Self.paperKnowledgeBaseRootDefaultsKey)
         }
     }
+    @Published var paperIngestionModelChoice: PaperIngestionModelChoice {
+        didSet {
+            UserDefaults.standard.set(paperIngestionModelChoice.rawValue, forKey: Self.paperIngestionModelDefaultsKey)
+        }
+    }
+    @Published var paperIngestionCustomModel: String {
+        didSet {
+            UserDefaults.standard.set(paperIngestionCustomModel, forKey: Self.paperIngestionCustomModelDefaultsKey)
+        }
+    }
     @Published var activeWorkspaceMode: WorkspaceMode {
         didSet {
             UserDefaults.standard.set(activeWorkspaceMode.rawValue, forKey: Self.workspaceModeDefaultsKey)
@@ -242,6 +307,8 @@ final class AppModel: ObservableObject {
         self.clipboardManager = clipboardManager
         runtimeRootPath = Self.initialRuntimeRootPath()
         paperKnowledgeBaseRootPath = Self.initialPaperKnowledgeBaseRootPath()
+        paperIngestionModelChoice = Self.initialPaperIngestionModelChoice()
+        paperIngestionCustomModel = UserDefaults.standard.string(forKey: Self.paperIngestionCustomModelDefaultsKey) ?? ""
         activeWorkspaceMode = Self.initialWorkspaceMode()
         clipboardHotkeyEnabled = Self.initialClipboardHotkeyEnabled()
         availableActions = []
@@ -295,6 +362,34 @@ final class AppModel: ObservableObject {
             ?? paperKnowledgeBaseExpandedRootPath + "/static/papers"
     }
 
+    var paperIngestionModelOverride: String? {
+        if let presetModelID = paperIngestionModelChoice.modelID {
+            return presetModelID
+        }
+
+        guard paperIngestionModelChoice == .custom else {
+            return nil
+        }
+
+        let customModel = paperIngestionCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return customModel.isEmpty ? nil : customModel
+    }
+
+    var paperIngestionModelSummary: String {
+        switch paperIngestionModelChoice {
+        case .codexDefault:
+            return "Codex default"
+        case .custom:
+            return paperIngestionModelOverride ?? "Custom model not set"
+        default:
+            return paperIngestionModelChoice.title
+        }
+    }
+
+    var hasValidPaperIngestionModel: Bool {
+        paperIngestionModelChoice != .custom || paperIngestionModelOverride != nil
+    }
+
     var paperImportAnalysis: ClipboardPaperImportAnalysis {
         ClipboardPaperImportAnalyzer.analyze(
             items: selectedClipboardItems,
@@ -341,12 +436,16 @@ final class AppModel: ObservableObject {
     }
 
     var canIngestSelectedPaperWithCodex: Bool {
-        selectedPaperDraftProposal != nil && !isIngestingPaper
+        selectedPaperDraftProposal != nil && hasValidPaperIngestionModel && !isIngestingPaper
     }
 
     var paperDraftStatusMessage: String {
         if isIngestingPaper {
             return "Codex is verifying, skimming, and ingesting the paper. This can take several minutes."
+        }
+
+        if !hasValidPaperIngestionModel {
+            return "Enter a Codex model identifier in Settings, or choose Codex Default."
         }
 
         return paperDraftImportAnalysis.message
@@ -680,8 +779,9 @@ final class AppModel: ObservableObject {
 
     func ingestSelectedPaperWithCodex() {
         guard let proposal = selectedPaperDraftProposal,
-              let knowledgeBaseRoot = paperKnowledgeBaseConfiguration.rootURL else {
-            setStatus(paperDraftImportAnalysis.message, tone: .warning)
+              let knowledgeBaseRoot = paperKnowledgeBaseConfiguration.rootURL,
+              hasValidPaperIngestionModel else {
+            setStatus(paperDraftStatusMessage, tone: .warning)
             return
         }
 
@@ -693,7 +793,8 @@ final class AppModel: ObservableObject {
         let request = CodexPaperIngestionRequest(
             proposal: proposal,
             knowledgeBaseRoot: knowledgeBaseRoot,
-            keepSourcePDF: keepSourcePaperPDF
+            keepSourcePDF: keepSourcePaperPDF,
+            model: paperIngestionModelOverride
         )
         let citationKey = proposal.citationKey
 
@@ -1404,6 +1505,15 @@ final class AppModel: ObservableObject {
         }
 
         return defaultPaperKnowledgeBaseRootPath
+    }
+
+    private static func initialPaperIngestionModelChoice() -> PaperIngestionModelChoice {
+        guard let storedValue = UserDefaults.standard.string(forKey: paperIngestionModelDefaultsKey),
+              let choice = PaperIngestionModelChoice(rawValue: storedValue) else {
+            return .codexDefault
+        }
+
+        return choice
     }
 
     private static func initialWorkspaceMode() -> WorkspaceMode {

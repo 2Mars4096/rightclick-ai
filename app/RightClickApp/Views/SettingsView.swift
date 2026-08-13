@@ -192,6 +192,34 @@ struct SettingsView: View {
 
                 Divider()
 
+                settingsRow("Ingestion Model", detail: "Applies only when the paper workflow launches Codex.") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Picker("Model", selection: $model.paperIngestionModelChoice) {
+                            ForEach(PaperIngestionModelChoice.allCases) { choice in
+                                Text(choice.title).tag(choice)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 280, alignment: .leading)
+
+                        if model.paperIngestionModelChoice == .custom {
+                            TextField("Model identifier, for example gpt-5.6-sol", text: $model.paperIngestionCustomModel)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(maxWidth: 360)
+                        }
+
+                        Text(model.paperIngestionModelChoice.detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text("Reasoning effort continues to follow your Codex configuration.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                Divider()
+
                 settingsRow("Paper Pages", detail: "Markdown pages created for imported papers.") {
                     runtimePathValue(model.paperKnowledgeBaseContentPapersPath)
                 }

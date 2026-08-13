@@ -315,6 +315,11 @@ struct ReviewWorkspaceView: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 12) {
+                    Label(model.paperIngestionModelSummary, systemImage: "cpu")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("Paper ingestion model. Change it in Settings.")
+
                     Toggle("Keep original PDF", isOn: $model.keepSourcePaperPDF)
                         .toggleStyle(.checkbox)
                         .disabled(model.isIngestingPaper)

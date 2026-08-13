@@ -148,6 +148,7 @@ The paper-library Finder flow is deliberately narrower than a generic file-actio
 2. Right-click one PDF in Finder and choose `Open Paper & Notes` under Services.
 3. If its `paperPDF` filename is already indexed, RightClick AI opens the PDF and `content/papers/<citationKey>/index.md` together.
 4. Otherwise, paste the complete Google Scholar BibTeX entry in the Paper workspace and choose `Ingest with Codex`.
+5. To choose a model for this workflow, open Settings → Paper Library → Ingestion Model. `Codex Default` follows the user's Codex configuration; presets and custom identifiers apply only to paper ingestion.
 
 The ingestion handoff requires an authenticated `codex` CLI and the personal `ingest-paper-kb` skill. Codex performs the skill's metadata check, safe preflight, paper skim, notes generation, apply, and verification; the native app does not duplicate those rules.
 
