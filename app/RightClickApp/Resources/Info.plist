@@ -36,6 +36,8 @@
 			<string>captureSelectedText:userData:error:</string>
 			<key>NSPortName</key>
 			<string>RightClickApp</string>
+			<key>NSRequiredContext</key>
+			<dict/>
 			<key>NSSendTypes</key>
 			<array>
 				<string>public.utf8-plain-text</string>
@@ -53,6 +55,15 @@
 			<string>openPaperAndNotes:userData:error:</string>
 			<key>NSPortName</key>
 			<string>RightClickApp</string>
+			<key>NSRequiredContext</key>
+			<dict>
+				<key>NSApplicationIdentifier</key>
+				<string>com.apple.finder</string>
+			</dict>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
 			<key>NSSendTypes</key>
 			<array>
 				<string>public.file-url</string>
